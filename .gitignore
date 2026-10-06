@@ -1,7 +1,7 @@
 # Dart / Flutter generated
 .dart_tool/
 .packages
-build/
+/build/
 .flutter-plugins
 .flutter-plugins-dependencies
 pubspec.lock

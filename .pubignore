@@ -2,7 +2,7 @@
 tool/
 .fvm/
 .dart_tool/
-build/
+/build/
 *.iml
 .DS_Store
 pubspec.lock
