@@ -89,8 +89,9 @@ class PdfJsLocalServer {
   /// the path token to do it. The self-healing chain uses this to retry on the
   /// next bundle down, and the per-device tier cache uses it to skip the probe
   /// on the critical path.
-  Uri viewerUriFor(PdfJsBundle? tier) =>
-      _baseUri.resolve(tier == null ? 'viewer/index.html' : '$_tierSegment/${tier.id}/viewer/index.html');
+  Uri viewerUriFor(PdfJsBundle? tier) => _baseUri.resolve(
+    tier == null ? 'viewer/index.html' : '$_tierSegment/${tier.id}/viewer/index.html',
+  );
 
   Uri get documentUri => _baseUri.resolve(_documentPath);
 
@@ -221,10 +222,12 @@ class PdfJsLocalServer {
     if (segments.length < 2 || !_constantTimeEqual(segments.first, _token)) return null;
     final rest = segments.skip(1).toList();
     if (rest.any((segment) => segment.isEmpty || segment == '.' || segment == '..')) return null;
-    if (rest.any((segment) =>
-        segment.contains(r'\') ||
-        segment.contains('/') ||
-        segment.codeUnits.any((value) => value < 32 || value == 127))) {
+    if (rest.any(
+      (segment) =>
+          segment.contains(r'\') ||
+          segment.contains('/') ||
+          segment.codeUnits.any((value) => value < 32 || value == 127),
+    )) {
       return null;
     }
 
@@ -258,8 +261,7 @@ class PdfJsLocalServer {
     final assetKey = _assetPath(assetPath, tier);
     final canonical = Uri(path: assetKey).normalizePath().path;
     if (canonical != assetKey ||
-        !const ['viewer/', 'pdfjs/', 'embedpdf/', 'embedpdf_viewer/']
-            .any(canonical.startsWith)) {
+        !const ['viewer/', 'pdfjs/', 'embedpdf/', 'embedpdf_viewer/'].any(canonical.startsWith)) {
       return _sendStatus(request.response, HttpStatus.notFound);
     }
     final ByteData data;
@@ -278,7 +280,8 @@ class PdfJsLocalServer {
     await response.close();
   }
 
-  String _proof(String challenge) => Hmac(sha256, _probeKey).convert(utf8.encode(challenge)).toString();
+  String _proof(String challenge) =>
+      Hmac(sha256, _probeKey).convert(utf8.encode(challenge)).toString();
 
   static bool _constantTimeEqual(String first, String second) {
     if (first.length != second.length) return false;

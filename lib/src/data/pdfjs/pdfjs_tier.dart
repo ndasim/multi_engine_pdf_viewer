@@ -158,10 +158,7 @@ class PdfJsTierCache {
     String appVersion = '',
     String? operatingSystemVersion,
   }) : _store = store,
-       _key = _buildKey(
-         appVersion,
-         operatingSystemVersion ?? _defaultOperatingSystemVersion(),
-       );
+       _key = _buildKey(appVersion, operatingSystemVersion ?? _defaultOperatingSystemVersion());
 
   static const String _keyPrefix = 'multi_engine_pdf_viewer.tier.v1';
 

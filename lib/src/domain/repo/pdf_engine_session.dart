@@ -13,7 +13,12 @@ abstract interface class PdfEngineSession {
 
 /// Optional durable storage for capability resolutions. Failures never block opening.
 abstract interface class PdfViewerCacheStore {
+  /// Returns the stored value for [key], or null when it is missing.
   Future<String?> read(String key);
+
+  /// Stores [value] under [key].
   Future<void> write(String key, String value);
+
+  /// Removes [key].
   Future<void> delete(String key);
 }

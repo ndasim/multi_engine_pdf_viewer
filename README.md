@@ -5,6 +5,15 @@ EmbedPDF and pdfrx/PDFium adapters behind one controller. Toolbars, localization
 application state remain in the host. Requires Dart 3.10+ and Flutter 3.41+.
 The combined package does not support web or desktop.
 
+## Install
+
+```yaml
+dependencies:
+  multi_engine_pdf_viewer: ^0.1.0
+```
+
+Android must allow cleartext HTTP for `127.0.0.1` only. See [Platform setup](#platform-setup). The runnable example in [`example/`](example/) already includes that configuration.
+
 ## Features
 
 - Vertical fit-width and grid layout (`PdfViewerLayout.grid(columns: 3)`), pinch and double-tap zoom.
@@ -50,11 +59,11 @@ CVE-2024-4367 (fixed upstream in 4.2.67) is mitigated by `isEvalSupported: false
 
 Update with `tool/vendor_pdfjs_bundles.sh [legacy-version] [current-version]` and review the diff of `assets/pdfjs/`.
 
-## Android profiling
+## Example
 
-The minimal usage example is in [`example/`](example/). The existing private
-performance harness is preserved under `tool/performance_harness/` and excluded
-from publication. PDF fixtures, archives and build products are not distributed.
+The runnable example is in [`example/`](example/). It opens a PDF from the system file picker on Android and iOS and can switch among PDF.js, EmbedPDF and pdfrx.
+
+`tool/performance_harness/` is a development harness and is excluded from the published package. PDF fixtures, archives and build products are not distributed.
 
 ## Usage
 
@@ -201,11 +210,12 @@ iOS: App Transport Security exempts loopback IP literals on iOS 10 and later, so
 
 ```sh
 flutter pub get
-dart analyze lib test example
+dart analyze lib test
 flutter test test
 node --test test/viewer_outline_test.mjs
 node --experimental-vm-modules --test test/viewer_layout_test.mjs test/embedpdf_limits_test.mjs test/embedpdf_viewer_navigation_test.mjs
-dart pub publish --dry-run
+cd example && flutter pub get && dart analyze && flutter test
+cd .. && flutter pub publish --dry-run
 ```
 
 ## Compatibility Evidence
@@ -224,11 +234,7 @@ provider is required in production. Never relax CSP to support an older runtime.
 | Android 9/API 28, WebView 66 emulator | EmbedPDF -> PDF.js attempted; neither rendered | Unsupported measured combination, not a fallback success |
 | iOS 15 | Runtime unavailable | No unsupported/fallback acceptance test |
 
-Latest [reference/repair verification](../../docs/implementation/2026-10-06-embedpdf-reference-verification.md)
-supersedes the earlier zoom/grid defects: four physical double-taps and real pinch
-retained page 6; injected fallback stayed at grid page 7 and vertical page 6.
-The physical pdfrx search/page-state disagreement is still open. Do not infer a
-green whole-package test suite or crash certification from these scoped passes.
+These figures supersede the earlier zoom and grid defects: four physical double-taps and a real pinch retained page 6, and an injected fallback stayed at grid page 7 and vertical page 6. The physical pdfrx search and page-state disagreement is still open. Do not infer a green whole-package test suite or crash certification from these scoped passes. Lab notes outside this package are not published with it.
 
 ## Same-Device Performance
 
@@ -254,29 +260,15 @@ per engine are insufficient for fleet or percentile claims. Recording/memory
 instrumentation adds overhead. PSS sums observed host plus listed renderer
 snapshots; it is neither a continuous true peak nor a resource ceiling.
 
-Method, samples and raw artifacts: [physical comparison](../../docs/implementation/2026-10-06-embedpdf-device-verification.md),
-[benchmark data](../../docs/implementation/evidence/embedpdf_2026-10-06/benchmark_summary.json),
-[latest evidence index](../../docs/implementation/evidence/embedpdf_2026-10-06/final/summary.json).
-Historical debug/simulator measurements remain separate in those reports and
-must not be mixed with this release matrix. Rejected historical baseline/ratio
-claims are not reused.
+The table is the release matrix for that device and fixture. Debug and simulator measurements are not mixed into these cells. Rejected historical baseline and ratio claims are not reused. Raw recordings are not part of this package.
 
-## Release Gates
+## Release status
 
-This is a pre-publication package. Its distribution license, public repository
-URL and authorized publisher must be selected by the source owner. Extraction
-does not grant an open-source license to proprietary code or reserve the pub.dev
-name. Android/iOS device smoke tests are a separate release gate.
+This package is licensed under the MIT license in [LICENSE](LICENSE). Source and issues: https://github.com/ndasim/multi_engine_pdf_viewer
 
-The name `flutter_pdf_viewer` is already taken on pub.dev (0.6.1, 2018). This
-package was therefore renamed to `multi_engine_pdf_viewer`; publishing under the
-former name would require authorization from its publisher.
+The name `flutter_pdf_viewer` is already taken on pub.dev (0.6.1, 2018). This package is published as `multi_engine_pdf_viewer`.
 
-Changing the default to EmbedPDF requires broader device/minimum-runtime coverage,
-broader iOS named-action qualification and measured failure recovery. Current evidence
-is a partial verification, **not full production-ready approval**. Minimum devices,
-OS renderer crash and low-memory behavior, native search/page-state regression,
-artifact provenance, legal approval and publisher rights remain explicit gates.
+Android and iOS device smoke tests remain a release gate. Changing the default to EmbedPDF requires broader device and minimum-runtime coverage, broader iOS named-action qualification and measured failure recovery. Current evidence is a partial verification. Minimum devices, OS renderer crash and low-memory behavior, and the native search and page-state regression remain open.
 
 PDF.js retains Apache-2.0 (`assets/pdfjs/LICENSE`); EmbedPDF retains its MIT wrapper,
 PDFium third-party and OFL font notices. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

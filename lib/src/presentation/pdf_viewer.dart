@@ -12,6 +12,10 @@ import 'pdf_viewer_params.dart';
 
 /// An unframed PDF rendering surface. Toolbar and navigation UI belong to the host.
 class PdfViewer extends StatefulWidget {
+  /// Renders the local PDF at [filePath].
+  ///
+  /// [initialPageNumber] is one-based. A null [controller] is owned by this widget.
+  /// Give the widget a new key to reopen a file replaced at the same path.
   const PdfViewer.file(
     this.filePath, {
     this.controller,
@@ -20,9 +24,16 @@ class PdfViewer extends StatefulWidget {
     super.key,
   }) : assert(initialPageNumber > 0);
 
+  /// Absolute path of the PDF to open.
   final String filePath;
+
+  /// Controller for this viewer. When null, the widget creates and disposes one.
   final PdfViewerController? controller;
+
+  /// One-based page shown when the document becomes ready.
   final int initialPageNumber;
+
+  /// Engine, layout and host callbacks.
   final PdfViewerParams params;
 
   @override
@@ -83,14 +94,15 @@ class _PdfViewerState extends State<PdfViewer> {
 
   void _onError(int generation, Object error, StackTrace? stackTrace) {
     if (!mounted || generation != _generation) return;
-    final resourceRejected = _engine == PdfViewerEngine.embedPdf &&
-      error is PdfViewerException &&
-      error.name.startsWith('embedpdf-fatal-') &&
-      error.name.endsWith('-limit');
+    final resourceRejected =
+        _engine == PdfViewerEngine.embedPdf &&
+        error is PdfViewerException &&
+        error.name.startsWith('embedpdf-fatal-') &&
+        error.name.endsWith('-limit');
     if (_engine == PdfViewerEngine.embedPdf &&
         error is PdfViewerException &&
-      error.name.startsWith('embedpdf-fatal-') &&
-      !resourceRejected) {
+        error.name.startsWith('embedpdf-fatal-') &&
+        !resourceRejected) {
       if (_fallbackPending) return;
       _fallbackPending = true;
       final page = _controller.pageNumber ?? _resumePage ?? widget.initialPageNumber;
@@ -205,13 +217,16 @@ class _PdfViewerState extends State<PdfViewer> {
     void attach(PdfEngineSession session) {
       if (mounted && generation == _generation) _attach(session);
     }
+
     void ready() {
       if (mounted && generation == _generation) widget.params.onViewerReady?.call(_controller);
     }
+
     void onError(Object error, StackTrace? stack) => _onError(generation, error, stack);
     void onPageTap(int page) {
       if (mounted && generation == _generation) unawaited(_onPageTap(page));
     }
+
     if (_engine == PdfViewerEngine.embedPdf) {
       return EmbedPdfEngineView(
         key: key,

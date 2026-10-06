@@ -16,3 +16,4 @@ Initial release.
 - Text search with result navigation and counters.
 - Engine-neutral outline bookmarks, internal links and named-action handling.
 - Allowlisted external links forwarded to the host application.
+- Runnable Android and iOS example application.

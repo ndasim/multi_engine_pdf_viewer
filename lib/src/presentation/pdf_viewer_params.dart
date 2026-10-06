@@ -6,8 +6,10 @@ import 'pdf_viewer_controller.dart';
 
 /// Presentation options and host-owned event handlers. No application UI is bundled.
 class PdfViewerParams {
+  /// Profiling override. Production code should pass [engine] instead.
   static PdfViewerEngine? debugEngineOverride;
 
+  /// Options for one viewer. [engine] defaults to PDF.js.
   const PdfViewerParams({
     this.engine = PdfViewerEngine.pdfJs,
     this.layout = PdfViewerLayout.vertical,
@@ -38,31 +40,76 @@ class PdfViewerParams {
        assert(largeDocumentPageCount > 0),
        assert(largeDocumentMaxCanvasPixels > 0);
 
+  /// Rendering engine. PDF.js is the default.
   final PdfViewerEngine engine;
+
+  /// Vertical or grid page arrangement.
   final PdfViewerLayout layout;
+
+  /// Gap around pages, in logical pixels.
   final double margin;
+
+  /// Color behind the pages.
   final Color backgroundColor;
+
+  /// Shadow drawn around each page.
   final Color pageShadowColor;
+
+  /// Highlight color for search matches.
   final Color matchColor;
+
+  /// Highlight color for the selected search match.
   final Color activeMatchColor;
+
+  /// Canvas pixel budget for a normal document.
   final int maxCanvasPixels;
+
+  /// Page count at which [largeDocumentMaxCanvasPixels] replaces [maxCanvasPixels].
   final int largeDocumentPageCount;
+
+  /// Canvas pixel budget used when [largeDocumentPageCount] is reached.
   final int largeDocumentMaxCanvasPixels;
+
+  /// Host version mixed into the PDF.js capability cache key. Empty skips that component.
   final String appVersion;
+
+  /// Optional store for the PDF.js capability decision. Failures never block opening.
   final PdfViewerCacheStore? cacheStore;
+
+  /// Forces hardware-accelerated canvas on or off. Null lets the engine decide.
   final bool? enableHardwareAcceleratedCanvas;
 
   /// Native font substitutions are process-global and never automatically removed.
   /// Only used by pdfrx. PDF.js uses the bundled standard fonts.
   final List<PdfFontRegistration> fonts;
+
+  /// Shown until the first page can be displayed.
   final WidgetBuilder? loadingBuilder;
+
+  /// Shown when opening or rendering fails and no fallback is available.
   final Widget Function(BuildContext context, Object error)? errorBuilder;
+
+  /// Called when navigation is available, not when every page has loaded.
   final ValueChanged<PdfViewerController>? onViewerReady;
+
+  /// Called once per session with the first painted one-based page.
   final ValueChanged<int>? onFirstPageRendered;
+
+  /// Called with the new one-based page after a page change.
   final ValueChanged<int>? onPageChanged;
+
+  /// Called with the tapped one-based page.
   final ValueChanged<int>? onPageTap;
+
+  /// Called when a grid-page tap returns the viewer to vertical layout.
   final ValueChanged<PdfViewerLayout>? onLayoutChanged;
+
+  /// Called for an allowlisted external link. The package never opens it.
   final ValueChanged<Uri>? onExternalLinkTap;
+
+  /// Engine and bundle resolution metadata, without document contents.
   final ValueChanged<PdfViewerDiagnostic>? onDiagnostic;
+
+  /// Called for a failure reported to the host. The viewer may still fall back after some errors.
   final void Function(Object error, StackTrace? stackTrace)? onError;
 }

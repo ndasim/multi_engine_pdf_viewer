@@ -348,11 +348,7 @@ class _PdfJsViewerState extends State<PdfJsViewer> with WidgetsBindingObserver {
         _attemptedBundles.add(bundle);
         unawaited(_tierCache.write(bundle, message.capabilities));
       }
-      _publishResolution(
-        bundle,
-        PdfJsTierSource.probe,
-        probeSupported: message.probeSupported,
-      );
+      _publishResolution(bundle, PdfJsTierSource.probe, probeSupported: message.probeSupported);
       return;
     }
 
@@ -473,8 +469,7 @@ class _PdfJsViewerState extends State<PdfJsViewer> with WidgetsBindingObserver {
     // existed. Unset (the default) is also withheld, which keeps today's
     // behaviour byte-for-byte until the A/B says otherwise.
     final enableHwa = params.resolvedEnableHardwareAcceleratedCanvas;
-    final sendEnableHwa =
-        enableHwa != null && (bundle?.supportsHardwareAcceleratedCanvas ?? false);
+    final sendEnableHwa = enableHwa != null && (bundle?.supportsHardwareAcceleratedCanvas ?? false);
     await _runCommand('open', {
       'config': {
         'documentUrl': server.documentUri.toString(),
