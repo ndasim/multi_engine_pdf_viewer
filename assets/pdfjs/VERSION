@@ -1,0 +1,9 @@
+legacy 4.1.392
+source: https://registry.npmjs.org/pdfjs-dist/-/pdfjs-dist-4.1.392.tgz
+sha256: ed2fa6b969a847f7c86326f6ac85b2cb3e5c4431ac751f3145a1b7ea7a556374
+compat 6.3.289
+source: https://registry.npmjs.org/pdfjs-dist/-/pdfjs-dist-6.3.289.tgz
+sha256: 06f25e887adc6489f04c9fcb14198c77e4e5623a59a0bba5c4cea5838a4f1241
+current 6.3.289
+source: https://registry.npmjs.org/pdfjs-dist/-/pdfjs-dist-6.3.289.tgz
+sha256: 06f25e887adc6489f04c9fcb14198c77e4e5623a59a0bba5c4cea5838a4f1241

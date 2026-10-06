@@ -1,0 +1,200 @@
+{
+  "version": "2.15.1",
+  "runtime": "Node WASM fixture proof, not a mobile/WebView benchmark",
+  "fixtureSha256": "0bd17bc8a853caf386cfd428ac8baa9eff403555d51c7ce199eb358730b69746",
+  "fixtureBytes": 21417410,
+  "wasmSha256": "5e4cd023c3dad4a895b3571ca573d3fc51bac6de48360d95283134385b954eaa",
+  "pageCount": 189,
+  "ownership": "raw published PDFium, one fresh environment per operation; no stock engines environment",
+  "javascriptPlatform": false,
+  "environmentCount": 78,
+  "synchronousReleases": 78,
+  "outlineNodes": 18798,
+  "search": {
+    "pageNumber": 2,
+    "query": "a",
+    "matches": 260
+  },
+  "outcomes": [
+    {
+      "sourcePage": 2,
+      "annotation": 2,
+      "pdfRect": {
+        "left": 1216,
+        "top": 1826,
+        "right": 1318.6700439453125,
+        "bottom": 1723.3299560546875
+      },
+      "normalizedRect": {
+        "left": 0.79167,
+        "top": 0.04298,
+        "width": 0.06684000000000001,
+        "height": 0.053810000000000004
+      },
+      "point": {
+        "width": 320,
+        "height": 397,
+        "x": 264.0288,
+        "y": 27.744345000000003
+      },
+      "callbackActions": [
+        "PrevPage"
+      ],
+      "navigationCount": 1,
+      "targetPage": 1,
+      "repeatedClicks": 11,
+      "sourceBitmapSha256": "f54c8b55a668fb92d3a05854137ada6ca73fdd1d278e91cf3828fb0749e01716",
+      "targetBitmapSha256": "1d8ae9a441f4e176a783490072b10f6e51c47d44f87ee72b779624ab36197aca"
+    },
+    {
+      "sourcePage": 2,
+      "annotation": 3,
+      "pdfRect": {
+        "left": 1344,
+        "top": 1826,
+        "right": 1446.6700439453125,
+        "bottom": 1723.3299560546875
+      },
+      "normalizedRect": {
+        "left": 0.875,
+        "top": 0.04298,
+        "width": 0.06684000000000001,
+        "height": 0.053810000000000004
+      },
+      "point": {
+        "width": 320,
+        "height": 397,
+        "x": 290.6944,
+        "y": 27.744345000000003
+      },
+      "callbackActions": [
+        "NextPage"
+      ],
+      "navigationCount": 1,
+      "targetPage": 3,
+      "repeatedClicks": 11,
+      "sourceBitmapSha256": "f54c8b55a668fb92d3a05854137ada6ca73fdd1d278e91cf3828fb0749e01716",
+      "targetBitmapSha256": "d8b726afae9ace828bf2766d24f0a00c41cbeae5dafc1ad20d2029d9f72e5256"
+    },
+    {
+      "sourcePage": 3,
+      "annotation": 2,
+      "pdfRect": {
+        "left": 1216,
+        "top": 1826,
+        "right": 1318.6700439453125,
+        "bottom": 1723.3299560546875
+      },
+      "normalizedRect": {
+        "left": 0.79167,
+        "top": 0.04298,
+        "width": 0.06684000000000001,
+        "height": 0.053810000000000004
+      },
+      "point": {
+        "width": 320,
+        "height": 397,
+        "x": 264.0288,
+        "y": 27.744345000000003
+      },
+      "callbackActions": [
+        "PrevPage"
+      ],
+      "navigationCount": 1,
+      "targetPage": 2,
+      "repeatedClicks": 11,
+      "sourceBitmapSha256": "d8b726afae9ace828bf2766d24f0a00c41cbeae5dafc1ad20d2029d9f72e5256",
+      "targetBitmapSha256": "f54c8b55a668fb92d3a05854137ada6ca73fdd1d278e91cf3828fb0749e01716"
+    },
+    {
+      "sourcePage": 3,
+      "annotation": 3,
+      "pdfRect": {
+        "left": 1344,
+        "top": 1826,
+        "right": 1446.6700439453125,
+        "bottom": 1723.3299560546875
+      },
+      "normalizedRect": {
+        "left": 0.875,
+        "top": 0.04298,
+        "width": 0.06684000000000001,
+        "height": 0.053810000000000004
+      },
+      "point": {
+        "width": 320,
+        "height": 397,
+        "x": 290.6944,
+        "y": 27.744345000000003
+      },
+      "callbackActions": [
+        "NextPage"
+      ],
+      "navigationCount": 1,
+      "targetPage": 4,
+      "repeatedClicks": 11,
+      "sourceBitmapSha256": "d8b726afae9ace828bf2766d24f0a00c41cbeae5dafc1ad20d2029d9f72e5256",
+      "targetBitmapSha256": "c528c42f7425c27124b589e4f25c72c7dd239f84ce8e7d9adfe46583a1556b7d"
+    },
+    {
+      "sourcePage": 4,
+      "annotation": 2,
+      "pdfRect": {
+        "left": 1216,
+        "top": 1826,
+        "right": 1318.6700439453125,
+        "bottom": 1723.3299560546875
+      },
+      "normalizedRect": {
+        "left": 0.79167,
+        "top": 0.04298,
+        "width": 0.06684000000000001,
+        "height": 0.053810000000000004
+      },
+      "point": {
+        "width": 320,
+        "height": 397,
+        "x": 264.0288,
+        "y": 27.744345000000003
+      },
+      "callbackActions": [
+        "PrevPage"
+      ],
+      "navigationCount": 1,
+      "targetPage": 3,
+      "repeatedClicks": 11,
+      "sourceBitmapSha256": "c528c42f7425c27124b589e4f25c72c7dd239f84ce8e7d9adfe46583a1556b7d",
+      "targetBitmapSha256": "d8b726afae9ace828bf2766d24f0a00c41cbeae5dafc1ad20d2029d9f72e5256"
+    },
+    {
+      "sourcePage": 4,
+      "annotation": 3,
+      "pdfRect": {
+        "left": 1344,
+        "top": 1826,
+        "right": 1446.6700439453125,
+        "bottom": 1723.3299560546875
+      },
+      "normalizedRect": {
+        "left": 0.875,
+        "top": 0.04298,
+        "width": 0.06684000000000001,
+        "height": 0.053810000000000004
+      },
+      "point": {
+        "width": 320,
+        "height": 397,
+        "x": 290.6944,
+        "y": 27.744345000000003
+      },
+      "callbackActions": [
+        "NextPage"
+      ],
+      "navigationCount": 1,
+      "targetPage": 5,
+      "repeatedClicks": 11,
+      "sourceBitmapSha256": "c528c42f7425c27124b589e4f25c72c7dd239f84ce8e7d9adfe46583a1556b7d",
+      "targetBitmapSha256": "c64bb8a043d21d53f9b242c5be36ea8eb0f6b6e8ca277bdce03c6b468398d3e3"
+    }
+  ]
+}

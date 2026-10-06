@@ -1,0 +1,81 @@
+/* Visual defaults mirror the previous pdfrx viewer; values are set from Dart. */
+:root {
+    --viewer-margin: 8px;
+    --viewer-background: rgb(158 158 158);
+    --viewer-page-shadow: rgba(0, 0, 0, 0.54);
+    --viewer-match: rgba(255, 235, 59, 0.5);
+    --viewer-active-match: rgba(255, 152, 0, 0.5);
+    --page-margin: var(--viewer-margin) auto 0;
+    --page-border: none;
+}
+
+html,
+body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow: hidden;
+    background-color: var(--viewer-background);
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    -webkit-text-size-adjust: 100%;
+}
+
+#viewerContainer {
+    position: absolute;
+    inset: 0;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x pan-y;
+    background-color: var(--viewer-background);
+}
+
+#viewer {
+    padding-bottom: var(--viewer-margin);
+}
+
+.pdfViewer .page {
+    box-shadow: 2px 2px 4px 2px var(--viewer-page-shadow);
+}
+
+.pdfViewer .page.loadingIcon::after {
+    display: none;
+}
+
+/* Grid: rows of pages starting at the left margin, vertically centered per row. */
+.pdfViewer.grid.scrollWrapped {
+    text-align: left;
+    margin-inline: 0;
+    padding-right: var(--viewer-margin);
+}
+
+.pdfViewer.grid.scrollWrapped .page {
+    margin: var(--viewer-margin) 0 0 var(--viewer-margin);
+}
+
+.pdfViewer.grid .textLayer,
+.pdfViewer.grid .annotationLayer {
+    pointer-events: none;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+#viewer .textLayer .highlight {
+    --highlight-bg-color: var(--viewer-match);
+    --highlight-selected-bg-color: var(--viewer-active-match);
+}
+
+/* Links stay invisible, as with pdfrx's transparent link color. */
+.annotationLayer section,
+.annotationLayer section:hover {
+    border-color: transparent !important;
+    background-color: transparent !important;
+    box-shadow: none !important;
+}
+
+.annotationLayer a:hover,
+.annotationLayer a:focus {
+    opacity: 0 !important;
+    background: none !important;
+    box-shadow: none !important;
+}

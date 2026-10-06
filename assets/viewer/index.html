@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <!-- When the tier is pinned (/<token>/t/<tier>/viewer/index.html) this
+         relative href already resolves to the pinned bundle's stylesheet. On
+         an unpinned first run bootstrap.js rewrites it once the capability
+         probe has answered. -->
+    <link id="pdfJsStylesheet" rel="stylesheet" href="../pdfjs/web/pdf_viewer.css">
+    <link rel="stylesheet" href="viewer.css">
+    <!-- Classic script, and the only script in this file. It probes the
+         engine, injects viewer.mjs for the bundle the engine can parse, and
+         reports a module that fails anyway — which would otherwise hang on the
+         loading indicator. -->
+    <script src="bootstrap.js"></script>
+</head>
+
+<body>
+    <div id="viewerContainer">
+        <div id="viewer" class="pdfViewer"></div>
+    </div>
+</body>
+
+</html>

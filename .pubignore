@@ -1,0 +1,8 @@
+# Development tooling and build artifacts (not part of the published package)
+tool/
+.fvm/
+.dart_tool/
+build/
+*.iml
+.DS_Store
+pubspec.lock

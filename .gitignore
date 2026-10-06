@@ -1,0 +1,19 @@
+# Dart / Flutter generated
+.dart_tool/
+.packages
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+pubspec.lock
+
+# FVM
+.fvm/
+
+# IDE / OS
+*.iml
+.idea/
+.DS_Store
+
+# Nested tool harness build artifacts
+tool/performance_harness/build/
+tool/performance_harness/.dart_tool/
