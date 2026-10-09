@@ -2,8 +2,39 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test, { after, before } from "node:test";
 import vm from "node:vm";
+import { createPageScrollLimiter } from "../assets/viewer/page_scroll_limiter.mjs";
 
 const assets = new URL("../assets/", import.meta.url);
+test('single-touch momentum is limited to four actual pages in both directions', () => {
+    let offset = 5000;
+    let index = 5;
+    const elements = Array.from({ length: 20 }, (_, page) => ({
+        getBoundingClientRect: () => ({ top: page * 1000 - offset }),
+    }));
+    const limiter = createPageScrollLimiter({
+        pages: () => elements, pageIndex: () => index,
+        offset: () => offset, setOffset: value => { offset = value; },
+    });
+    limiter.begin(1);
+    offset = 15000;
+    assert.equal(limiter.constrain(), true);
+    assert.equal(offset, 9000);
+    offset = 0;
+    limiter.constrain();
+    assert.equal(offset, 1000);
+    index = 1;
+    limiter.begin(1);
+    offset = 12000;
+    limiter.constrain();
+    assert.equal(offset, 5000);
+    limiter.begin(2);
+    offset = 19000;
+    assert.equal(limiter.constrain(), false);
+    limiter.begin(1);
+    limiter.reset();
+    offset = 0;
+    assert.equal(limiter.constrain(), false);
+});
 const source = readFileSync(new URL("viewer/viewer.mjs", assets), "utf8");
 const playwrightModule = process.env.PDFJS_PLAYWRIGHT_MODULE;
 let browser;
@@ -29,14 +60,18 @@ function layoutFixture(tier) {
     if (engine.includes("function visibleSort(")) helpers.push("visibleSort");
     const callbacks = [];
     const listeners = new Map();
-    const container = { clientWidth: 1200, clientHeight: 800, clientLeft: 0, clientTop: 0,
+    const container = {
+        clientWidth: 1200, clientHeight: 800, clientLeft: 0, clientTop: 0,
         scrollTop: 0, scrollLeft: 0, getBoundingClientRect: () => ({ top: 0, left: 0 }),
-        addEventListener(type, listener) { listeners.set(type, listener); } };
+        addEventListener(type, listener) { listeners.set(type, listener); }
+    };
     const state = { columns: 3, config: { margin: 8 }, ready: true, fitScale: 1 };
-    const context = vm.createContext({ container, state, DEFAULT_CACHE_SIZE: 10,
+    const context = vm.createContext({
+        container, state, DEFAULT_CACHE_SIZE: 10,
+        scrollLimiter: { reset() { }, constrain() { } },
         ScrollMode: { PAGE: 3, VERTICAL: 0, HORIZONTAL: 1, WRAPPED: 2 }, SpreadMode: { NONE: 0 },
-        viewer: { classList: { toggle() {} } }, positiveInt: (number, fallback) => number > 0 ? number : fallback,
-        ResizeObserver: class { observe() {} }, setTimeout, clearTimeout,
+        viewer: { classList: { toggle() { } } }, positiveInt: (number, fallback) => number > 0 ? number : fallback,
+        ResizeObserver: class { observe() { } }, setTimeout, clearTimeout,
         eventBus: { dispatch(type, payload) { if (type === "pagechanging") callbacks.push(payload.pageNumber); } },
     });
     vm.runInContext(helpers.map((name) => shippedFunction(engine, name)).join("\n") + `
@@ -113,8 +148,8 @@ function layoutFixture(tier) {
             ${method(engine, "_getVisiblePages").replace("(0,getVisibleElements)", "getVisibleElements")}
             ${method(engine, "update")}
             ${engine.includes("  #getPageAdvance(")
-                ? method(engine, "#getPageAdvance").replace("  #", "  ")
-                : method(engine, "_getPageAdvance")}
+            ? method(engine, "#getPageAdvance").replace("  #", "  ")
+            : method(engine, "_getPageAdvance")}
             ${method(engine, "nextPage")}
             ${method(engine, "previousPage")}
         }
@@ -124,12 +159,14 @@ function layoutFixture(tier) {
             ${method(engine, "executeNamedAction", "PDFLinkService")}
         };
     `, context);
-    return { context, state, container, callbacks, listeners,
+    return {
+        context, state, container, callbacks, listeners,
         run: (code) => vm.runInContext(code, context),
         anchor: () => {
             const rect = state.pdfViewer.getPageView(6).div.getBoundingClientRect();
             return rect.top / rect.height;
-        } };
+        }
+    };
 }
 
 for (const tier of ["current", "compat", "legacy"]) {
@@ -197,9 +234,11 @@ for (const tier of ["current", "compat", "legacy"]) {
 before(async () => {
     if (!playwrightModule) return;
     const { chromium } = await import(playwrightModule);
-    browser = await chromium.launch({ headless: true, timeout: 10000,
+    browser = await chromium.launch({
+        headless: true, timeout: 10000,
         ...(process.env.PDFJS_CHROMIUM_EXECUTABLE
-            ? { executablePath: process.env.PDFJS_CHROMIUM_EXECUTABLE } : {}) });
+            ? { executablePath: process.env.PDFJS_CHROMIUM_EXECUTABLE } : {})
+    });
 });
 after(async () => { await browser?.close(); });
 
@@ -250,10 +289,12 @@ async function snapshot(page) {
     return page.evaluate(() => {
         const { pdfViewer } = layoutRegression.state;
         const rect = pdfViewer.getPageView(6).div.getBoundingClientRect();
-        return { pageNumber: pdfViewer.currentPageNumber, top: rect.top, height: rect.height,
+        return {
+            pageNumber: pdfViewer.currentPageNumber, top: rect.top, height: rect.height,
             left: rect.left, width: rect.width, fitScale: layoutRegression.state.fitScale,
             scale: pdfViewer.currentScale,
-            callbacks: events.filter((event) => event.type === "pageChanged").map((event) => event.pageNumber) };
+            callbacks: events.filter((event) => event.type === "pageChanged").map((event) => event.pageNumber)
+        };
     });
 }
 
@@ -278,7 +319,8 @@ for (const tier of ["current", "compat", "legacy"]) {
                     const url = new URL(route.request().url());
                     assert.equal(url.origin, origin, "No external requests are allowed");
                     if (url.pathname === "/") {
-                        return route.fulfill({ contentType: "text/html", body: `<!doctype html><html><head>
+                        return route.fulfill({
+                            contentType: "text/html", body: `<!doctype html><html><head>
                             <link rel="stylesheet" href="/pdfjs/web/pdf_viewer.css">
                             <link rel="stylesheet" href="/viewer/viewer.css"></head><body>
                             <div id="viewerContainer"><div id="viewer" class="pdfViewer"></div></div>
@@ -291,8 +333,10 @@ for (const tier of ["current", "compat", "legacy"]) {
                         ? url.pathname.replace("/pdfjs/", `/pdfjs/${tier}/`) : url.pathname;
                     try {
                         const body = path === "/viewer/viewer.mjs" ? instrumentedSource : readFileSync(new URL(`.${path}`, assets));
-                        return route.fulfill({ body, contentType: path.endsWith(".mjs") ? "text/javascript"
-                            : path.endsWith(".css") ? "text/css" : "application/octet-stream" });
+                        return route.fulfill({
+                            body, contentType: path.endsWith(".mjs") ? "text/javascript"
+                                : path.endsWith(".css") ? "text/css" : "application/octet-stream"
+                        });
                     } catch {
                         return route.fulfill({ status: 404, body: "Missing fixture asset" });
                     }
@@ -304,9 +348,11 @@ for (const tier of ["current", "compat", "legacy"]) {
                 try {
                     await page.goto(origin);
                     await page.waitForFunction(() => Boolean(globalThis.pdfjsBridge));
-                    await page.evaluate((origin) => pdfjsBridge.receive(JSON.stringify({ v: 1, type: "open", config: {
-                        documentUrl: `${origin}/fixture.pdf`, initialPage: 7, columns: 3, margin: 8,
-                    } })), origin);
+                    await page.evaluate((origin) => pdfjsBridge.receive(JSON.stringify({
+                        v: 1, type: "open", config: {
+                            documentUrl: `${origin}/fixture.pdf`, initialPage: 7, columns: 3, margin: 8,
+                        }
+                    })), origin);
                     await page.waitForFunction(() => events.some((event) => event.type === "firstPageRendered" && event.pageNumber === 7));
                     await page.waitForFunction(() => layoutRegression.requested.has(2));
                     const initial = await snapshot(page);

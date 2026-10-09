@@ -60,6 +60,7 @@ class _EmbedPdfEngineViewState extends State<EmbedPdfEngineView> with WidgetsBin
   bool _painted = false;
   bool _opening = false;
   bool _background = false;
+  bool _routeVisible = true;
   Duration _silent = Duration.zero;
   Duration _loading = Duration.zero;
   DateTime _lastTick = DateTime.now();
@@ -86,6 +87,23 @@ class _EmbedPdfEngineViewState extends State<EmbedPdfEngineView> with WidgetsBin
   }
 
   bool _current(int generation) => mounted && !_retired && generation == _generation;
+
+  bool get _active => !_background && _routeVisible;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final visible = ModalRoute.isCurrentOf(context) ?? true;
+    if (visible == _routeVisible) return;
+    _routeVisible = visible;
+    _syncActivity();
+  }
+
+  void _syncActivity() {
+    _lastTick = DateTime.now();
+    _silent = Duration.zero;
+    unawaited(_send('setActive', {'active': _active}));
+  }
 
   Future<void> _start(int initialPage) async {
     final generation = ++_generation;
@@ -183,7 +201,7 @@ class _EmbedPdfEngineViewState extends State<EmbedPdfEngineView> with WidgetsBin
     final now = DateTime.now();
     final elapsed = now.difference(_lastTick);
     _lastTick = now;
-    if (_background || _retired || !mounted) return;
+    if (!_active || _retired || !mounted) return;
     _silent += elapsed;
     if (!_painted) _loading += elapsed;
     if (!_painted && _loading >= const Duration(seconds: 45)) {
@@ -275,7 +293,7 @@ class _EmbedPdfEngineViewState extends State<EmbedPdfEngineView> with WidgetsBin
               },
             }),
           );
-          unawaited(_send('setActive', {'active': !_background}));
+          unawaited(_send('setActive', {'active': _active}));
         }
       case PdfJsReadyMessage():
         setState(() => _ready = true);
@@ -369,9 +387,7 @@ class _EmbedPdfEngineViewState extends State<EmbedPdfEngineView> with WidgetsBin
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _background = state != AppLifecycleState.resumed;
-    _lastTick = DateTime.now();
-    _silent = Duration.zero;
-    unawaited(_send('setActive', {'active': !_background}));
+    _syncActivity();
     if (!_background && !_retired) unawaited(_resume());
   }
 

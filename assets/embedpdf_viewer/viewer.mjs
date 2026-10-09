@@ -1,14 +1,21 @@
 import { limits, failure } from './pdfium_document.mjs';
+import { createPageScrollLimiter } from '../viewer/page_scroll_limiter.mjs';
 
 const root = document.getElementById('pages');
 const state = {
     config: null, worker: null, pageCount: 0, pageNumber: 1, columns: 1, zoom: 1,
-    disposed: false, fatal: false, firstPaint: false, active: !document.hidden,
+    disposed: false, fatal: false, firstPaint: false, hostActive: true, active: !document.hidden,
     activeTime: 0, lastClock: Date.now(), sequence: 0, generation: 0,
     searchGeneration: 0, query: '', matches: [], currentMatch: -1,
     outline: [], rendered: new Map(), visible: new Set(), pending: new Map(),
     anchor: null,
 };
+const scrollLimiter = createPageScrollLimiter({
+    pages: () => Array.from(root.children),
+    pageIndex: () => state.pageNumber - 1,
+    offset: () => window.scrollY,
+    setOffset: value => window.scrollBy({ top: value - window.scrollY, behavior: 'instant' }),
+});
 let work = Promise.resolve();
 let queuedJobs = 0;
 function post(type, payload = {}) {
@@ -64,11 +71,12 @@ const watchdog = setInterval(() => {
 }, 2000);
 function setActive(active) {
     clock();
-    state.active = active;
+    state.hostActive = active;
+    state.active = active && !document.hidden;
     state.lastClock = Date.now();
-    if (active) post('heartbeat');
+    if (state.active) post('heartbeat');
 }
-document.addEventListener('visibilitychange', () => setActive(!document.hidden));
+document.addEventListener('visibilitychange', () => setActive(state.hostActive));
 
 function findState(pending) {
     post('findState', { current: state.currentMatch < 0 ? 0 : state.currentMatch + 1, total: state.matches.length, pending });
@@ -176,6 +184,7 @@ function restoreAnchor() {
 }
 function releaseAnchor() { state.anchor = null; }
 function currentPage() {
+    if (scrollLimiter.constrain()) return;
     if (!state.pageCount || state.disposed || state.fatal || state.anchor) return;
     const candidates = [...state.visible].map(number => ({ number, rect: root.children[number - 1].getBoundingClientRect() }))
         .filter(({ rect }) => rect.bottom > 0 && rect.top < window.innerHeight && rect.right > 0 && rect.left < window.innerWidth);
@@ -193,6 +202,7 @@ const observer = new IntersectionObserver((entries) => {
 }, { rootMargin: '120px 0px' });
 window.addEventListener('scroll', currentPage, { passive: true });
 async function goToPage(number) {
+    scrollLimiter.reset();
     if (!Number.isInteger(number) || !state.pageCount) throw failure('page-range');
     number = Math.max(1, Math.min(state.pageCount, number));
     const changed = number !== state.pageNumber;
@@ -205,6 +215,7 @@ async function goToPage(number) {
     restoreAnchor();
 }
 function setLayout(columns, anchor = captureAnchor()) {
+    scrollLimiter.reset();
     if (!Number.isInteger(columns) || columns < 1 || columns > 6) throw failure('layout-range');
     state.anchor = anchor;
     const columnsChanged = state.columns !== columns;
@@ -244,7 +255,10 @@ root.addEventListener('wheel', event => {
     event.preventDefault();
     setZoom(state.zoom * (event.deltaY > 0 ? 0.9 : 1.1), captureAnchor(event.clientX, event.clientY));
 }, { passive: false });
-window.addEventListener('wheel', event => { if (!event.ctrlKey) releaseAnchor(); }, { passive: true });
+window.addEventListener('wheel', event => {
+    scrollLimiter.reset();
+    if (!event.ctrlKey) releaseAnchor();
+}, { passive: true });
 window.addEventListener('keydown', event => {
     if (['ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', 'Home', 'End', ' '].includes(event.key)) releaseAnchor();
 });
@@ -256,6 +270,8 @@ const touchPoint = touches => ({
     distance: Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY)
 });
 root.addEventListener('touchstart', event => {
+    scrollLimiter.begin(state.columns === 1 ? event.touches.length : 0);
+    if (event.touches.length === 1) releaseAnchor();
     if (event.touches.length !== 2) return;
     event.preventDefault();
     pointer = null;

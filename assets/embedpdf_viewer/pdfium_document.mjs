@@ -373,17 +373,7 @@ export class PdfiumDocument {
                 node.destinationPath = target?.destinationPath ?? null;
             }
         };
-        const inherit = (nodes, previous = null) => {
-            for (const node of nodes) {
-                const target = node.destinationPath ? node : previous;
-                node.pageNumber = target?.pageNumber ?? null;
-                node.destinationPath = target?.destinationPath ?? null;
-                inherit(node.children, target);
-                previous = target;
-            }
-        };
         targets(root);
-        inherit(root);
         return root;
     }
 

@@ -152,21 +152,27 @@ void main() {
     await directory.delete(recursive: true);
   });
 
-  Future<_Controller> start(WidgetTester tester) async {
+  Future<_Controller> start(WidgetTester tester, {GlobalKey<NavigatorState>? navigatorKey}) async {
+    final viewer = EmbedPdfEngineView(
+      filePath: file,
+      initialPageNumber: 6,
+      params: PdfViewerParams(engine: PdfViewerEngine.embedPdf, onPageChanged: pages.add),
+      layout: PdfViewerLayout.vertical,
+      onAttach: (_) {},
+      onDetach: (_) {},
+      onReady: () {},
+      onError: (error, _) => errors.add(error),
+      onPageTap: (_) {},
+    );
     await tester.pumpWidget(
       Directionality(
         textDirection: TextDirection.ltr,
-        child: EmbedPdfEngineView(
-          filePath: file,
-          initialPageNumber: 6,
-          params: PdfViewerParams(engine: PdfViewerEngine.embedPdf, onPageChanged: pages.add),
-          layout: PdfViewerLayout.vertical,
-          onAttach: (_) {},
-          onDetach: (_) {},
-          onReady: () {},
-          onError: (error, _) => errors.add(error),
-          onPageTap: (_) {},
-        ),
+        child: navigatorKey == null
+            ? viewer
+            : Navigator(
+                key: navigatorKey,
+                onGenerateRoute: (_) => PageRouteBuilder<void>(pageBuilder: (_, _, _) => viewer),
+              ),
       ),
     );
     await _wait(
@@ -175,6 +181,44 @@ void main() {
     );
     return platform.controllers.single;
   }
+
+  testWidgets(
+    'a covered viewer pauses heartbeat activity and restores failure handling on return',
+    (tester) async {
+      final navigator = GlobalKey<NavigatorState>();
+      final web = await start(tester, navigatorKey: navigator);
+      web.message('bridgeReady');
+      await tester.pump();
+      web.message('firstPageRendered', {'session': web.session, 'pageNumber': 6});
+      await tester.pump();
+      unawaited(
+        navigator.currentState!.push<void>(
+          PageRouteBuilder<void>(pageBuilder: (_, _, _) => const SizedBox.expand()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        web.commands.lastWhere((command) => command['type'] == 'setActive')['active'],
+        isFalse,
+      );
+      await tester.pump(const Duration(seconds: 40));
+      expect(errors, isEmpty);
+      navigator.currentState!.pop();
+      await tester.pumpAndSettle();
+      expect(web.commands.lastWhere((command) => command['type'] == 'setActive')['active'], isTrue);
+      await tester.pump(const Duration(seconds: 20));
+      expect(errors, isEmpty);
+      web.message('error', {
+        'session': web.session,
+        'name': 'embedpdf-fatal-worker-hang',
+        'message': 'worker heartbeat timed out',
+      });
+      await _wait(tester, () => errors.isNotEmpty);
+      expect((errors.single as PdfViewerException).name, 'embedpdf-fatal-worker-hang');
+      await tester.pumpWidget(const SizedBox.shrink());
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   Future<void> closed(_Controller web) async {
     Socket? socket;

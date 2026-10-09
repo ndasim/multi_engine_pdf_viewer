@@ -35,7 +35,8 @@ class PdfrxSession implements PdfEngineSession {
       for (var index = 0; index < node.children.length; index++)
         _node(node.children[index], [...path, index]),
     ];
-    final destination = node.dest;
+    // PDFium reports an unresolvable destination as page 0.
+    final destination = node.dest != null && node.dest!.pageNumber >= 1 ? node.dest : null;
     if (destination != null) _destinations[path.join('/')] = destination;
     final descendants = children.where((child) => child.destinationPath != null);
     final descendant = descendants.isEmpty ? null : descendants.first;

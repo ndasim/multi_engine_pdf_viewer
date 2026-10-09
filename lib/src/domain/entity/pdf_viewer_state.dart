@@ -181,7 +181,8 @@ class PdfViewerDiagnostic {
 
   @override
   String toString() =>
-      'PdfViewerDiagnostic(${engine.name}, ${bundle ?? 'none'}, $source, attempt $attempt)';
+      'PdfViewerDiagnostic(${engine.name}, ${bundle ?? 'none'}, $source, attempt $attempt'
+      '${failure == null ? '' : ', failure $failure'})';
 }
 
 /// A rendering failure; resource URLs are redacted by the owning engine.

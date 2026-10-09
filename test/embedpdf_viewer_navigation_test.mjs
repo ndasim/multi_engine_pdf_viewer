@@ -3,17 +3,21 @@ import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import vm from 'node:vm';
 import { failure, limits } from '../assets/embedpdf_viewer/pdfium_document.mjs';
+import { createPageScrollLimiter } from '../assets/viewer/page_scroll_limiter.mjs';
 
 async function viewer() {
     const events = [];
     const requests = [];
     const frames = [];
     const timers = [];
+    const intervals = [];
+    const documentListeners = new Map();
     const windowListeners = new Map();
     let scrollX = 0;
     let scrollY = 0;
     let observed;
     const window = {
+        get scrollY() { return scrollY; },
         innerWidth: 1080, innerHeight: 1400, devicePixelRatio: 1,
         PdfJsBridge: { postMessage: json => events.push(JSON.parse(json)) },
         addEventListener: (name, callback) => windowListeners.set(name, callback),
@@ -40,7 +44,7 @@ async function viewer() {
         querySelector(selector) { return this.children.find(child => selector === 'canvas' ? child.tag === 'canvas' : child.className === selector.slice(1)); }
         closest(selector) { return selector === '.page' && this.className === 'page' ? this : this.parent?.closest(selector); }
         addEventListener(name, callback) { this.listeners.set(name, callback); }
-        getContext() { return { putImageData() {} }; }
+        getContext() { return { putImageData() { } }; }
         get clientWidth() { return this.getBoundingClientRect().width; }
         getBoundingClientRect() {
             if (this.tag === 'canvas') return this.parent.getBoundingClientRect();
@@ -63,35 +67,41 @@ async function viewer() {
         scrollIntoView() { const rect = this.getBoundingClientRect(); window.scrollBy({ top: rect.top }); }
     }
     const root = new Element('main');
-    const document = { hidden: false, getElementById: () => root, addEventListener() {},
-        createElement: tag => tag === 'script' ? { noModule: false } : new Element(tag) };
+    const document = {
+        hidden: false, getElementById: () => root,
+        addEventListener: (name, callback) => documentListeners.set(name, callback),
+        createElement: tag => tag === 'script' ? { noModule: false } : new Element(tag)
+    };
     class Worker {
         postMessage({ id, type, payload }) {
             requests.push({ type, payload });
             const result = type === 'open' ? { pageCount: 189, capabilities: 'test' }
                 : type === 'render' ? { width: 16, height: 20, pageWidth: 612, pageHeight: 792 + payload.pageNumber * 3, pixels: new Uint8ClampedArray(1280) }
-                : type === 'outline' ? [{ children: [{}, { pageNumber: 4, children: [] }] }]
-                : type === 'click' ? { actions: ['NextPage'], targetPage: payload.pageNumber + 1 } : 'pong';
+                    : type === 'outline' ? [{ children: [{}, { pageNumber: 4, children: [] }] }]
+                        : type === 'click' ? { actions: ['NextPage'], targetPage: payload.pageNumber + 1 } : 'pong';
             queueMicrotask(() => this.onmessage?.({ data: { id, result } }));
         }
-        terminate() {}
+        terminate() { }
     }
-    const context = vm.createContext({ document, window, Worker, URL, CSS: { supports: () => true },
-        ImageData: class {}, Date, Math, Map, Set, Promise,
-        setInterval: () => 1, clearInterval() {}, setTimeout: callback => timers.push(callback),
+    const context = vm.createContext({
+        document, window, Worker, URL, CSS: { supports: () => true },
+        ImageData: class { }, Date, Math, Map, Set, Promise,
+        setInterval: callback => intervals.push(callback), clearInterval() { },
+        setTimeout: callback => timers.push(callback),
         requestAnimationFrame: callback => frames.push(callback),
         IntersectionObserver: class {
             constructor(callback) { observed = callback; }
-            observe() {}
-            disconnect() {}
+            observe() { }
+            disconnect() { }
         },
     });
     const module = new vm.SourceTextModule(await readFile(new URL('../assets/embedpdf_viewer/viewer.mjs', import.meta.url), 'utf8'), {
         context, initializeImportMeta: meta => { meta.url = new URL('../assets/embedpdf_viewer/viewer.mjs', import.meta.url).href; },
     });
-    await module.link(() => new vm.SyntheticModule(['limits', 'failure'], function () {
+    await module.link(() => new vm.SyntheticModule(['limits', 'failure', 'createPageScrollLimiter'], function () {
         this.setExport('limits', limits);
         this.setExport('failure', failure);
+        this.setExport('createPageScrollLimiter', createPageScrollLimiter);
     }, { context }));
     await module.evaluate();
     const settle = async () => {
@@ -111,13 +121,39 @@ async function viewer() {
     };
     await send('open', { config: { session: 'current', initialPage: 2, columns: 1, margin: 8 } });
     events.length = 0;
-    return { root, events, requests, settle, send, observe, window,
+    return {
+        root, events, requests, settle, send, observe, window,
+        tick: async () => { intervals.forEach(callback => callback()); await settle(); },
+        visibility: async hidden => {
+            document.hidden = hidden;
+            documentListeners.get('visibilitychange')?.();
+            await settle();
+        },
         pages: () => events.filter(event => event.type === 'pageChanged').map(event => event.pageNumber),
         point: (number, x, y) => {
             const rect = root.children[number - 1].getBoundingClientRect();
             return { x: (x - rect.left) / rect.width, y: (y - rect.top) / rect.height };
-        } };
+        }
+    };
 }
+
+    test('WebView visibility never overrides an inactive Flutter route', async () => {
+        const view = await viewer();
+        await view.send('setActive', { active: false });
+        await view.visibility(true);
+        await view.visibility(false);
+        await view.tick();
+        assert.equal(view.requests.filter(request => request.type === 'ping').length, 0);
+        assert.equal(view.events.filter(event => event.type === 'heartbeat').length, 0);
+        await view.visibility(true);
+        await view.send('setActive', { active: true });
+        await view.tick();
+        assert.equal(view.requests.filter(request => request.type === 'ping').length, 0);
+        await view.visibility(false);
+        await view.tick();
+        assert.equal(view.requests.filter(request => request.type === 'ping').length, 1);
+        assert.ok(view.events.some(event => event.type === 'heartbeat'));
+    });
 
 function samePoint(actual, expected) {
     assert.ok(Math.abs(actual.x - expected.x) < 1e-9, `horizontal anchor: ${actual.x} != ${expected.x}`);
@@ -167,9 +203,11 @@ test('pinch follows a moving midpoint without changing the logical page', async 
     const view = await viewer();
     await view.send('goToPage', { pageNumber: 6 });
     const point = view.point(6, 540, 700);
-    const event = (distance, x = 540, y = 700) => ({ preventDefault() {}, touches: [
-        { clientX: x - distance / 2, clientY: y }, { clientX: x + distance / 2, clientY: y },
-    ] });
+    const event = (distance, x = 540, y = 700) => ({
+        preventDefault() { }, touches: [
+            { clientX: x - distance / 2, clientY: y }, { clientX: x + distance / 2, clientY: y },
+        ]
+    });
     view.root.listeners.get('touchstart')(event(200));
     for (const distance of [300, 400, 350, 200]) {
         const clientX = distance === 200 ? 540 : 560;

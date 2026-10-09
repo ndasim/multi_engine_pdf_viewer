@@ -19,6 +19,7 @@
 // below the floor of every vendored bundle, so nothing in this file can make
 // that engine work. See docs/implementation/evidence/android9_stock_webview.md.
 import * as pdfjsLib from "../pdfjs/build/pdf.min.mjs";
+import { createPageScrollLimiter } from "./page_scroll_limiter.mjs";
 import {
     EventBus,
     FindState,
@@ -53,6 +54,14 @@ const state = {
     ready: false,
     lastQuery: "",
 };
+
+const scrollLimiter = createPageScrollLimiter({
+    pages: () => Array.from(viewer.querySelectorAll('.page')),
+    pageIndex: () => (state.pdfViewer?.currentPageNumber ?? 1) - 1,
+    offset: () => container.scrollTop,
+    setOffset: value => { container.scrollTop = value; },
+});
+container.addEventListener('wheel', () => scrollLimiter.reset(), { passive: true });
 
 function post(type, payload = {}) {
     const channel = globalThis.PdfJsBridge;
@@ -229,6 +238,7 @@ class AnchoredPDFViewer extends PDFViewer {
     }
 
     _getVisiblePages() {
+        scrollLimiter.constrain();
         this.restoreViewportAnchor();
         const visible = super._getVisiblePages();
         if (this.viewportAnchor && this.scrollMode === ScrollMode.WRAPPED) {
@@ -246,6 +256,7 @@ class AnchoredPDFViewer extends PDFViewer {
     }
 
     scrollPageIntoView(options) {
+        scrollLimiter.reset();
         if (this.preservingAnchor && this.viewportAnchor) {
             super.scrollPageIntoView({ pageNumber: this.viewportAnchor.pageNumber });
             this.restoreViewportAnchor();
@@ -380,6 +391,7 @@ function pageAnchorAt(point) {
 }
 
 function zoomTo(scale, point) {
+    scrollLimiter.reset();
     const { pdfViewer } = state;
     const target = clamp(scale, minScale(), maxScale());
     if (Math.abs(target - pdfViewer.currentScale) < 0.001) return;
@@ -424,6 +436,7 @@ let lastTap = null;
 container.addEventListener(
     "touchstart",
     (event) => {
+        scrollLimiter.begin(state.columns === 1 ? event.touches.length : 0);
         if (!state.ready) return;
         if (event.touches.length === 2) {
             event.preventDefault();
@@ -593,24 +606,33 @@ function afterFirstPaint(task) {
 }
 
 function createPageResolver(pdfDocument) {
-    let namedDestinations = null;
+    const namedDestinations = new Map();
     const pageIndexByRef = new Map();
 
     return async (dest) => {
         try {
             let explicitDest = dest;
             if (typeof dest === "string") {
-                namedDestinations ??= pdfDocument.getDestinations();
-                explicitDest = (await namedDestinations)?.[dest];
+                if (!namedDestinations.has(dest)) {
+                    namedDestinations.set(dest, pdfDocument.getDestination(dest));
+                }
+                explicitDest = await namedDestinations.get(dest);
             }
             if (!Array.isArray(explicitDest)) return null;
             const ref = explicitDest[0];
             if (Number.isInteger(ref)) return ref + 1;
             if (!ref || typeof ref !== "object") return null;
 
-            const key = `${ref.num}R${ref.gen}`;
-            if (!pageIndexByRef.has(key)) pageIndexByRef.set(key, pdfDocument.getPageIndex(ref));
-            return (await pageIndexByRef.get(key)) + 1;
+            const num = Array.isArray(ref) ? ref[0] : ref.num;
+            const gen = Array.isArray(ref) ? ref[1] : ref.gen;
+            if (!Number.isInteger(num) || !Number.isInteger(gen)) return null;
+
+            const key = `${num}R${gen}`;
+            if (!pageIndexByRef.has(key)) {
+                pageIndexByRef.set(key, pdfDocument.getPageIndex({ num, gen }));
+            }
+            const pageIndex = await pageIndexByRef.get(key);
+            return Number.isInteger(pageIndex) && pageIndex >= 0 ? pageIndex + 1 : null;
         } catch {
             // Broken destinations behave like entries without a target.
             return null;
@@ -666,18 +688,6 @@ function mapOutline(targets, nodes, parentPath) {
     return mapped;
 }
 
-function inheritOutlineTargets(nodes, fallbackTarget = null) {
-    let previousTarget = fallbackTarget;
-    for (const node of nodes) {
-        const target = node.destinationPath ? node : previousTarget;
-        node.pageNumber = target?.pageNumber ?? null;
-        node.destinationPath = target?.destinationPath ?? null;
-        inheritOutlineTargets(node.children, target);
-        previousTarget = target;
-    }
-    return nodes;
-}
-
 async function loadOutline(pdfDocument, resolvePageNumber) {
     let outline = null;
     try {
@@ -687,7 +697,7 @@ async function loadOutline(pdfDocument, resolvePageNumber) {
     }
     state.outline = outline ?? [];
     const targets = await resolveOutlineTargets(resolvePageNumber, state.outline);
-    const items = inheritOutlineTargets(mapOutline(targets, state.outline, []));
+    const items = mapOutline(targets, state.outline, []);
     post("outline", { items });
 }
 

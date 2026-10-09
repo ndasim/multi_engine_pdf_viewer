@@ -6,7 +6,7 @@ import { PdfiumDocument, limits, rasterSize } from '../assets/embedpdf_viewer/pd
 
 test('final raster dimensions and product obey every budget, including extreme aspect ratios', () => {
     for (const [pageWidth, pageHeight] of [[0.001, 10000000], [10000000, 0.001], [612, 792],
-        [1e308, 1e308], [Number.MIN_VALUE, 1], [1, Number.MIN_VALUE]]) {
+    [1e308, 1e308], [Number.MIN_VALUE, 1], [1, Number.MIN_VALUE]]) {
         for (const budget of [1, 2, 17, 256, 4096, limits.rasterPixels, limits.rasterPixels * 2]) {
             const { width, height } = rasterSize(pageWidth, pageHeight, 1080, budget);
             const maximum = Math.min(budget, limits.rasterPixels);
@@ -29,7 +29,7 @@ test('invalid geometry and requests are rejected without native allocation', () 
 test('annotation limit is fatal before bitmap, form setup or click work and always closes the page', () => {
     const calls = [];
     const pdf = new PdfiumDocument({
-        pdfium: {}, PDFiumExt_Init() {},
+        pdfium: {}, PDFiumExt_Init() { },
         FPDF_LoadPage: () => { calls.push('load'); return 2; },
         FPDFPage_GetAnnotCount: () => limits.annotations + 1,
         FPDF_ClosePage: () => calls.push('close'),
@@ -39,7 +39,7 @@ test('annotation limit is fatal before bitmap, form setup or click work and alwa
     pdf.document = 1;
     pdf.pageCount = 1;
     for (const operation of [() => pdf.render(1, 32, 256), () => pdf.widgets(1),
-        () => pdf.click(1, { pdf: true, x: 1, y: 1 })]) {
+    () => pdf.click(1, { pdf: true, x: 1, y: 1 })]) {
         assert.throws(operation, { name: 'embedpdf-fatal-annotation-limit' });
     }
     assert.deepEqual(calls, ['load', 'close', 'load', 'close', 'load', 'close']);
@@ -76,9 +76,28 @@ function syntheticPdf({ mediaBox = '0 0 612 200', annotations = 0, text = false 
     return Buffer.from(pdf);
 }
 
+test('outline does not inherit page one from an unrelated cover or parent', async () => {
+    const pdf = new PdfiumDocument({
+        pdfium: {}, PDFiumExt_Init() { },
+        FPDFBookmark_GetFirstChild: (_document, bookmark) => bookmark === 0 ? 1 : bookmark === 2 ? 4 : 0,
+        FPDFBookmark_GetNextSibling: (_document, bookmark) => bookmark === 1 ? 2 : bookmark === 2 ? 3 : 0,
+        FPDFBookmark_GetTitle: () => 0,
+        FPDFBookmark_GetAction: () => 0,
+        FPDFBookmark_GetDest: (_document, bookmark) => bookmark === 1 ? 10 : bookmark === 3 ? 30 : 0,
+        FPDFDest_GetDestPageIndex: (_document, destination) => destination === 10 ? 0 : 7,
+    });
+    pdf.document = 1;
+    pdf.pageCount = 10;
+    const nodes = await pdf.outline();
+    assert.deepEqual(nodes.map(node => node.pageNumber), [1, null, 8]);
+    assert.equal(nodes[1].destinationPath, null);
+    assert.equal(nodes[1].children[0].pageNumber, null);
+    assert.equal(nodes[1].children[0].destinationPath, null);
+});
+
 const wasm = await readFile(new URL('../assets/embedpdf/pdfium.wasm', import.meta.url));
 async function nativeDocument(overrides = {}) {
-    const api = await init({ wasmBinary: wasm, print() {}, printErr() {} });
+    const api = await init({ wasmBinary: wasm, print() { }, printErr() { } });
     const wrapped = { ...api, ...Object.fromEntries(Object.entries(overrides).map(([name, wrap]) => [name, wrap(api[name])])) };
     return new PdfiumDocument(wrapped);
 }
@@ -86,11 +105,13 @@ async function nativeDocument(overrides = {}) {
 test('synthetic narrow PDF reaches native allocation only with bounded final dimensions', async () => {
     let budget = 1;
     let allocations = 0;
-    const pdf = await nativeDocument({ FPDFBitmap_Create: create => (width, height, alpha) => {
-        assert.ok(width <= budget && height <= budget && width * height <= budget);
-        allocations++;
-        return create(width, height, alpha);
-    } });
+    const pdf = await nativeDocument({
+        FPDFBitmap_Create: create => (width, height, alpha) => {
+            assert.ok(width <= budget && height <= budget && width * height <= budget);
+            allocations++;
+            return create(width, height, alpha);
+        }
+    });
     try {
         assert.equal(pdf.open(syntheticPdf({ mediaBox: '0 0 .001 10000000' })), 1);
         for (budget of [1, 2, 17, 256]) {
@@ -115,7 +136,7 @@ test('synthetic 4097-annotation PDF fails deterministically before native render
     try {
         pdf.open(syntheticPdf({ annotations: 4097 }));
         for (const operation of [() => pdf.render(1, 32, 256), () => pdf.widgets(1),
-            () => pdf.click(1, { pdf: true, x: 1, y: 1 })]) {
+        () => pdf.click(1, { pdf: true, x: 1, y: 1 })]) {
             assert.throws(operation, { name: 'embedpdf-fatal-annotation-limit' });
         }
         assert.equal(closes, 3);
