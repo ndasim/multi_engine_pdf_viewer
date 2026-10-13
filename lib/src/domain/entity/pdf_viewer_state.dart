@@ -6,7 +6,7 @@ enum PdfViewerEngine {
   /// Native PDFium through pdfrx.
   pdfrx,
 
-  /// Offline PDFium compiled to WASM. Opt in; a fatal failure falls back to PDF.js once.
+  /// Offline PDFium compiled to WASM. Opt in; a fatal failure falls back to pdfrx once.
   embedPdf,
 }
 

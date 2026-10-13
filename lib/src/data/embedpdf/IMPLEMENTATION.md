@@ -65,6 +65,19 @@ unchanged. This is not Fortify SAST/SCA/DAST or a WebView compatibility certific
 
 ## Ownership And Integration
 
+### 0.1.4 Cleanup Spec And Plan
+
+Keep PDF.js as the default. Retire fatal EmbedPDF sessions once and resume with
+pdfrx at the last page and layout. The 200 MiB document limit also selects native
+progressive loading; all other resource quotas remain terminal. Overlapping links
+must select an actionable target, preserve explicit native destination coordinates,
+and never act on a retired document or layout.
+
+Plan: align the public fallback documentation; guard native link cache and async
+tap ownership, prefer explicit annotations over detected URLs, and retain native
+destination semantics; verify package Dart and JavaScript tests, analysis and the
+publish dry run; release the patch without changes to the host application.
+
 `EmbedPdfEngineView` has exactly the constructor contract of `PdfJsEngineView`.
 `EmbedPdfSession` implements all `PdfEngineSession` operations. Layout and zoom
 are additional session operations; `injectFatal()` sends a deterministic fatal
@@ -170,7 +183,7 @@ before notifying the parent. Cleanup platform calls have one-second bounds.
 - All watchdog accounting pauses while backgrounded; resume preserves the page,
   checks/rebinds the server, rejects old-generation callbacks and uses a fresh viewer.
 - One worker, serialized native work, at most 64 queued jobs. No retained native pages.
-- Document input: 64 MiB; page count: 10,000; annotations/page: 4,096.
+- Document input: 200 MiB; page count: 10,000; annotations/page: 4,096.
 - Raster/page: 2,097,152 pixels or the smaller host budget; at most 32 cached pages
   and 8,388,608 aggregate cached pixels. Grid thumbnails get a smaller per-page budget.
 - Search: 512 UTF-16 units/query, 10,000 matches and 64,000 rectangles total;

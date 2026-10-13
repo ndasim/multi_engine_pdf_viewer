@@ -2,10 +2,12 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/widgets.dart';
+import 'package:flutter/services.dart';
 import 'package:multi_engine_pdf_viewer/multi_engine_pdf_viewer.dart';
 import 'package:multi_engine_pdf_viewer/src/data/embedpdf/embedpdf_session.dart';
 import 'package:multi_engine_pdf_viewer/src/presentation/engines/embedpdf_engine_view.dart';
 import 'package:multi_engine_pdf_viewer/src/presentation/engines/pdfjs_engine_view.dart';
+import 'package:multi_engine_pdf_viewer/src/presentation/engines/pdfrx_engine_view.dart';
 import 'package:flutter_test/flutter_test.dart';
 // ignore: depend_on_referenced_packages
 import 'package:webview_flutter_platform_interface/webview_flutter_platform_interface.dart';
@@ -193,6 +195,10 @@ void main() {
     platform = _WebViewPlatform();
     WebViewPlatform.instance = platform;
     directory = await Directory.systemTemp.createTemp('pdf-viewer-fallback-');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      const MethodChannel('plugins.flutter.io/path_provider'),
+      (_) async => directory.path,
+    );
     file = '${directory.path}/document.pdf';
     await File(file).writeAsString('%PDF-1.7\n%%EOF\n');
     host = _Host();
@@ -223,29 +229,39 @@ void main() {
     expect(EmbedPdfEngineView.debugInjectFatal, isNotNull);
     await EmbedPdfEngineView.debugInjectFatal!();
     await _waitFor(tester, () => host.fallbacks.isNotEmpty);
-    final fallback = tester.widget<PdfJsEngineView>(find.byType(PdfJsEngineView));
+    final fallback = tester.widget<PdfrxEngineView>(find.byType(PdfrxEngineView));
     expect(find.byType(EmbedPdfEngineView), findsNothing);
     expect(fallback.initialPageNumber, 7);
     expect(fallback.layout, const PdfViewerLayout.grid(columns: 4));
     expect(host.errors, isEmpty);
     expect(host.ready, isEmpty);
-    expect(host.fallbacks.single.engine, PdfViewerEngine.pdfJs);
+    expect(host.fallbacks.single.engine, PdfViewerEngine.pdfrx);
     expect(host.fallbacks.single.attempt, 1);
     expect(host.fallbacks.single.failure, 'embedpdf-fatal-injected');
     expect(embed.channelRemoved, isTrue);
     expect(embed.commands.where((command) => command['type'] == 'dispose'), hasLength(1));
     expect(EmbedPdfEngineView.debugInjectFatal, isNull);
-    final pdfJs = await _web(tester, platform, 1);
-    expect(pdfJs.openConfig['initialPage'], 7);
-    expect(pdfJs.openConfig['columns'], 4);
-    pdfJs.message('ready', {'pageCount': 20, 'pageNumber': 7});
-    await tester.pump();
-    expect(host.controller.pageNumber, 7);
-    expect(host.ready, [host.controller]);
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  for (final code in ['document', 'page', 'annotation', 'raster', 'memory']) {
+  testWidgets('document over 200 MiB falls back to pdfrx without starting a WebView', (
+    tester,
+  ) async {
+    final raf = await tester.runAsync(() => File(file).open(mode: FileMode.write));
+    await tester.runAsync(() => raf!.truncate(200 * 1024 * 1024 + 1));
+    await tester.runAsync(() => raf!.close());
+    await tester.pumpWidget(host.viewer(file, initialPage: 3));
+    await _waitFor(tester, () => host.fallbacks.isNotEmpty);
+    expect(find.byType(PdfrxEngineView), findsOneWidget);
+    expect(find.byType(EmbedPdfEngineView), findsNothing);
+    expect(host.errors, isEmpty);
+    expect(platform.controllers, isEmpty);
+    expect(host.fallbacks.single.engine, PdfViewerEngine.pdfrx);
+    expect(host.fallbacks.single.failure, 'embedpdf-fatal-document-limit');
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  for (final code in ['page', 'annotation', 'raster', 'memory']) {
     for (final ready in [false, true]) {
       testWidgets('$code quota rejection is terminal with ready=$ready', (tester) async {
         await tester.pumpWidget(host.viewer(file));
@@ -321,16 +337,9 @@ void main() {
     embed.message('error', {'name': 'embedpdf-fatal-worker-hang'});
     await _waitFor(tester, () => host.fallbacks.isNotEmpty);
     expect(host.controller.isReady, isFalse);
-    final fallback = tester.widget<PdfJsEngineView>(find.byType(PdfJsEngineView));
+    final fallback = tester.widget<PdfrxEngineView>(find.byType(PdfrxEngineView));
     expect(fallback.initialPageNumber, 9);
     expect(fallback.layout, const PdfViewerLayout.grid(columns: 4));
-    final pdfJs = await _web(tester, platform, 1);
-    expect(pdfJs.openConfig['initialPage'], 9);
-    expect(pdfJs.openConfig['columns'], 4);
-    pdfJs.message('ready', {'pageCount': 20, 'pageNumber': 9});
-    await tester.pump();
-    expect(host.controller.pageNumber, 9);
-    expect(host.ready, [host.controller, host.controller]);
     expect(host.errors, isEmpty);
     await tester.pumpWidget(const SizedBox.shrink());
   });
@@ -353,12 +362,9 @@ void main() {
     embed.message('pageChanged', {'pageNumber': 12});
     embed.message('error', {'name': 'embedpdf-fatal-worker-hang'});
     await _waitFor(tester, () => host.fallbacks.isNotEmpty);
-    final fallback = tester.widget<PdfJsEngineView>(find.byType(PdfJsEngineView));
+    final fallback = tester.widget<PdfrxEngineView>(find.byType(PdfrxEngineView));
     expect(fallback.initialPageNumber, 12);
     expect(fallback.layout, PdfViewerLayout.vertical);
-    final pdfJs = await _web(tester, platform, 1);
-    expect(pdfJs.openConfig['initialPage'], 12);
-    expect(pdfJs.openConfig['columns'], 1);
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
@@ -371,44 +377,38 @@ void main() {
     retired.onError(first, null);
     retired.onError(second, null);
     await _waitFor(tester, () => host.fallbacks.isNotEmpty);
-    final fallback = tester.widget<PdfJsEngineView>(find.byType(PdfJsEngineView));
+    final fallback = tester.widget<PdfrxEngineView>(find.byType(PdfrxEngineView));
     retired.onError(second, null);
     await tester.pump();
-    await _web(tester, platform, 1);
     expect(host.fallbacks, hasLength(1));
     expect(host.fallbacks.single.failure, first.name);
     expect(host.errors, isEmpty);
-    expect(platform.controllers, hasLength(2));
-    expect(tester.widget<PdfJsEngineView>(find.byType(PdfJsEngineView)).key, fallback.key);
+    expect(platform.controllers, hasLength(1));
+    expect(tester.widget<PdfrxEngineView>(find.byType(PdfrxEngineView)).key, fallback.key);
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('PDF.js failure after fallback is terminal and never starts another engine', (
+  testWidgets('pdfrx failure after fallback is terminal and never starts another engine', (
     tester,
   ) async {
     await tester.pumpWidget(host.viewer(file));
     final embed = await _web(tester, platform, 0);
     embed.message('error', {'name': 'embedpdf-fatal-bootstrap'});
     await _waitFor(tester, () => host.fallbacks.isNotEmpty);
-    final pdfJs = await _web(tester, platform, 1);
-    final fallback = tester.widget<PdfJsEngineView>(find.byType(PdfJsEngineView));
-    pdfJs.message('error', {
-      'name': 'InvalidPDFException',
-      'message': 'Invalid PDF',
-      'tier': 'legacy',
-    });
+    final fallback = tester.widget<PdfrxEngineView>(find.byType(PdfrxEngineView));
+    fallback.onError(const PdfViewerException('InvalidPDFException', 'Invalid PDF'), null);
     await _waitFor(tester, () => host.errors.isNotEmpty);
     await tester.pump();
     expect(host.errors, hasLength(1));
     expect(host.errors.single, isA<PdfViewerException>());
     expect(host.errors.single.toString(), contains('InvalidPDFException'));
     expect(find.byKey(const ValueKey('terminal-error')), findsOneWidget);
-    expect(find.byType(PdfJsEngineView), findsNothing);
+    expect(find.byType(PdfrxEngineView), findsNothing);
     expect(find.byType(EmbedPdfEngineView), findsNothing);
     fallback.onError(const PdfViewerException('embedpdf-fatal-late', 'Late failure'), null);
     await tester.pump();
     expect(host.fallbacks, hasLength(1));
-    expect(platform.controllers, hasLength(2));
+    expect(platform.controllers, hasLength(1));
     expect(find.byKey(const ValueKey('terminal-error')), findsOneWidget);
     await tester.pumpWidget(const SizedBox.shrink());
   });
@@ -423,10 +423,6 @@ void main() {
       final retired = tester.widget<EmbedPdfEngineView>(find.byType(EmbedPdfEngineView));
       embed.message('error', {'name': 'embedpdf-fatal-worker-hang'});
       await _waitFor(tester, () => host.fallbacks.isNotEmpty);
-      final pdfJs = await _web(tester, platform, 1);
-      pdfJs.message('ready', {'pageCount': 20, 'pageNumber': 3});
-      pdfJs.message('pageChanged', {'pageNumber': 4});
-      await tester.pump();
       final readyCount = host.ready.length;
       final diagnostics = List<PdfViewerDiagnostic>.of(host.diagnostics);
       final staleSession = EmbedPdfSession(send: (_, _) async {}, onError: (_) {});
@@ -445,20 +441,12 @@ void main() {
       await tester.pump();
       expect(host.ready, hasLength(readyCount));
       expect(host.diagnostics, diagnostics);
-      expect(host.pages, [4]);
+      expect(host.pages, isEmpty);
       expect(host.rendered, isEmpty);
       expect(host.links, isEmpty);
       expect(host.taps, isEmpty);
       expect(host.errors, isEmpty);
-      expect(host.controller.pageNumber, 4);
-      expect(host.controller.pageCount, 20);
-      expect(host.controller.isReady, isTrue);
-      pdfJs.message('firstPageRendered', {'pageNumber': 4});
-      pdfJs.message('pageChanged', {'pageNumber': 5});
-      await tester.pump();
-      expect(host.rendered, [4]);
-      expect(host.pages, [4, 5]);
-      expect(host.controller.pageNumber, 5);
+      expect(host.controller.isReady, isFalse);
       staleSession.dispose();
       await tester.pumpWidget(const SizedBox.shrink());
     },
@@ -474,7 +462,6 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     embed.message('error', {'name': 'embedpdf-fatal-worker-hang'});
     await _waitFor(tester, () => host.fallbacks.isNotEmpty);
-    await _web(tester, platform, 1);
     final nextFile = '${directory.path}/next.pdf';
     await tester.runAsync(() => File(nextFile).writeAsString('%PDF-1.7\n%%EOF\n'));
     await tester.pumpWidget(
@@ -484,13 +471,13 @@ void main() {
     expect(reopened.initialPageNumber, 2);
     expect(reopened.layout, const PdfViewerLayout.grid(columns: 4));
     expect(host.controller.isReady, isFalse);
-    final nextEmbed = await _web(tester, platform, 2);
+    final nextEmbed = await _web(tester, platform, 1);
     expect(nextEmbed.openConfig['initialPage'], 2);
     expect(nextEmbed.openConfig['columns'], 4);
     await EmbedPdfEngineView.debugInjectFatal!();
     await _waitFor(tester, () => host.fallbacks.length == 2);
     expect(host.fallbacks.map((diagnostic) => diagnostic.attempt), [1, 1]);
-    expect(tester.widget<PdfJsEngineView>(find.byType(PdfJsEngineView)).initialPageNumber, 2);
+    expect(tester.widget<PdfrxEngineView>(find.byType(PdfrxEngineView)).initialPageNumber, 2);
     expect(host.errors, isEmpty);
     await tester.pumpWidget(const SizedBox.shrink());
   });
@@ -502,10 +489,9 @@ void main() {
     embed.message('ready', {'pageCount': 20, 'pageNumber': 8});
     embed.message('error', {'name': 'embedpdf-fatal-worker-hang'});
     await _waitFor(tester, () => host.fallbacks.isNotEmpty);
-    await _web(tester, platform, 1);
     await tester.pumpWidget(host.viewer(file, engine: PdfViewerEngine.pdfJs, initialPage: 2));
     expect(find.byType(EmbedPdfEngineView), findsOneWidget);
-    final nextEmbed = await _web(tester, platform, 2);
+    final nextEmbed = await _web(tester, platform, 1);
     expect(nextEmbed.openConfig['initialPage'], 2);
     expect(host.controller.isReady, isFalse);
     expect(host.fallbacks, hasLength(1));
@@ -527,11 +513,6 @@ void main() {
     host.controller.dispose();
     embed.message('error', {'name': 'embedpdf-fatal-worker-hang'});
     await _waitFor(tester, () => host.fallbacks.isNotEmpty);
-    final pdfJs = await _web(tester, platform, 1);
-    pdfJs.message('ready', {'pageCount': 20, 'pageNumber': 3});
-    await tester.pump();
-    expect(replacement.isReady, isTrue);
-    expect(host.ready.last, same(replacement));
     await tester.pumpWidget(const SizedBox.shrink());
     expect(replacement.isReady, isFalse);
     expect(replacement.pageNumber, isNull);

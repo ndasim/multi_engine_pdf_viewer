@@ -9,7 +9,7 @@ The combined package does not support web or desktop.
 
 ```yaml
 dependencies:
-  multi_engine_pdf_viewer: ^0.1.0
+  multi_engine_pdf_viewer: ^0.1.4
 ```
 
 Android must allow cleartext HTTP for `127.0.0.1` only. See [Platform setup](#platform-setup). The runnable example in [`example/`](example/) already includes that configuration.
@@ -129,12 +129,13 @@ each, and all 78 environments released. This is not mobile lifetime certificatio
 See [implementation ownership notes](lib/src/data/embedpdf/IMPLEMENTATION.md).
 
 Unsupported startup capabilities or an observable fatal EmbedPDF failure retire
-that session and fall back **once to PDF.js**, preserving the last page and layout.
+that session and fall back **once to pdfrx**, preserving the last page and layout.
 The failed worker is stopped before replacement; retired callbacks are ignored.
 Recoverable command failures do not replace the engine. Resource-quota violations
-are terminal errors, not permission to send the same document to another engine.
+are terminal errors, except for the EmbedPDF document-size limit: files over
+200 MiB fall back to native progressive loading before a WebView starts.
 PDF.js may downgrade its own bundle tiers, but never retries EmbedPDF or switches
-to pdfrx. If PDF.js is also unsupported, the viewer reports failure.
+to pdfrx. If the fallback pdfrx session fails, the viewer reports failure.
 
 Search state and zoom are not guaranteed to survive engine replacement.
 `onDiagnostic` identifies the actual engine; the originally requested engine is
@@ -146,10 +147,11 @@ The active-time watchdog checks worker requests/heartbeat; suspension pauses its
 clock. Exception injection verifies the fallback path, **not worker or renderer
 death**. Native WebView termination is only observable where the platform plugin
 reports it. A killed Flutter application cannot perform in-process recovery.
-Controlled `Worker.terminate()` on iOS 16.2 triggered watchdog fallback to PDF.js
+Historical testing with `Worker.terminate()` on iOS 16.2 triggered watchdog fallback to PDF.js
 legacy, repainted page 2 and retained the application PID through a 12-second
 stability window. This is actual worker termination, not exception injection or
-an application kill. OS content-process crash and OOM qualification remain gates.
+an application kill. That result does not qualify the current pdfrx fallback.
+OS content-process crash and OOM qualification remain gates.
 
 Re-vendor from the workspace root with `node tool/vendor_embedpdf.mjs`. Pinned
 tarball integrity, artifact hashes, sizes and notices are in
@@ -269,6 +271,10 @@ This package is licensed under the MIT license in [LICENSE](LICENSE). Source and
 The name `flutter_pdf_viewer` is already taken on pub.dev (0.6.1, 2018). This package is published as `multi_engine_pdf_viewer`.
 
 Android and iOS device smoke tests remain a release gate. Changing the default to EmbedPDF requires broader device and minimum-runtime coverage, broader iOS named-action qualification and measured failure recovery. Current evidence is a partial verification. Minimum devices, OS renderer crash and low-memory behavior, and the native search and page-state regression remain open.
+
+For 0.1.4, the maintainer explicitly deferred new Android/iOS device smoke tests
+because no physical devices were connected. Automated checks do not qualify the
+new native fallback or link changes on physical devices.
 
 PDF.js retains Apache-2.0 (`assets/pdfjs/LICENSE`); EmbedPDF retains its MIT wrapper,
 PDFium third-party and OFL font notices. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

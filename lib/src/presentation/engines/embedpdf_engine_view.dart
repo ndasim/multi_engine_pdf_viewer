@@ -119,7 +119,7 @@ class _EmbedPdfEngineViewState extends State<EmbedPdfEngineView> with WidgetsBin
     try {
       final file = File(widget.filePath);
       final size = await file.length();
-      if (size <= 0 || size > 64 * 1024 * 1024) {
+      if (size <= 0 || size > 200 * 1024 * 1024) {
         _report(
           const PdfViewerException(
             'embedpdf-fatal-document-limit',

@@ -98,7 +98,8 @@ class _PdfViewerState extends State<PdfViewer> {
         _engine == PdfViewerEngine.embedPdf &&
         error is PdfViewerException &&
         error.name.startsWith('embedpdf-fatal-') &&
-        error.name.endsWith('-limit');
+        error.name.endsWith('-limit') &&
+        error.name != 'embedpdf-fatal-document-limit';
     if (_engine == PdfViewerEngine.embedPdf &&
         error is PdfViewerException &&
         error.name.startsWith('embedpdf-fatal-') &&
@@ -111,7 +112,7 @@ class _PdfViewerState extends State<PdfViewer> {
         final session = _session;
         if (session != null) _detach(session);
         setState(() {
-          _engineOverride = PdfViewerEngine.pdfJs;
+          _engineOverride = PdfViewerEngine.pdfrx;
           _resumePage = page;
           _error = null;
           _generation++;
@@ -120,7 +121,7 @@ class _PdfViewerState extends State<PdfViewer> {
         try {
           widget.params.onDiagnostic?.call(
             PdfViewerDiagnostic(
-              engine: PdfViewerEngine.pdfJs,
+              engine: PdfViewerEngine.pdfrx,
               source: 'embedpdf-fallback',
               attempt: 1,
               failure: error.name,

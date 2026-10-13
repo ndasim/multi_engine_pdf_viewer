@@ -1,5 +1,5 @@
 export const limits = Object.freeze({
-    documentBytes: 64 * 1024 * 1024,
+    documentBytes: 200 * 1024 * 1024,
     wasmBytes: 256 * 1024 * 1024,
     pages: 10000,
     rasterPixels: 2097152,
@@ -333,8 +333,26 @@ export class PdfiumDocument {
     linkAt(number, point) {
         return this.withPage(number, (page) => {
             const position = this.pagePoint(page, point.width, point.height, point.x, point.y);
-            const link = this.api.FPDFLink_GetLinkAtPoint(page, position.x, position.y);
-            return link ? this.actionTarget(this.api.FPDFLink_GetAction(link), this.api.FPDFLink_GetDest(this.document, link)) : null;
+            // GetLinkAtPoint returns only the topmost link; an action-less link stacked over a
+            // button would shadow it, so take the topmost link that actually has a target.
+            const buffer = this.alloc(24);
+            let found = null;
+            try {
+                this.runtime.setValue(buffer, 0, 'i32');
+                while (this.api.FPDFLink_Enumerate(page, buffer, buffer + 4)) {
+                    const link = this.runtime.getValue(buffer + 4, 'i32');
+                    if (!this.api.FPDFLink_GetAnnotRect(link, buffer + 8)) continue;
+                    const a = this.runtime.getValue(buffer + 8, 'float');
+                    const b = this.runtime.getValue(buffer + 12, 'float');
+                    const c = this.runtime.getValue(buffer + 16, 'float');
+                    const d = this.runtime.getValue(buffer + 20, 'float');
+                    if (position.x < Math.min(a, c) || position.x > Math.max(a, c)) continue;
+                    if (position.y < Math.min(b, d) || position.y > Math.max(b, d)) continue;
+                    const target = this.actionTarget(this.api.FPDFLink_GetAction(link), this.api.FPDFLink_GetDest(this.document, link));
+                    if (target) found = target;
+                }
+            } finally { this.free(buffer); }
+            return found;
         });
     }
 

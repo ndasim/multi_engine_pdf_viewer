@@ -45,12 +45,13 @@ test('annotation limit is fatal before bitmap, form setup or click work and alwa
     assert.deepEqual(calls, ['load', 'close', 'load', 'close', 'load', 'close']);
 });
 
-function syntheticPdf({ mediaBox = '0 0 612 200', annotations = 0, text = false } = {}) {
+function syntheticPdf({ mediaBox = '0 0 612 200', annotations = 0, links = [], text = false } = {}) {
+    const annotationCount = annotations + links.length;
     const objects = [
         '<< /Type /Catalog /Pages 2 0 R >>',
         '<< /Type /Pages /Count 1 /Kids [3 0 R] >>',
         `<< /Type /Page /Parent 2 0 R /MediaBox [${mediaBox}] /Contents 4 0 R
-            ${annotations ? `/Annots [${Array.from({ length: annotations }, (_, index) => `${index + 5} 0 R`).join(' ')}]` : ''}
+            ${annotationCount ? `/Annots [${Array.from({ length: annotationCount }, (_, index) => `${index + 5} 0 R`).join(' ')}]` : ''}
             ${text ? '/Resources << /Font << /F1 5 0 R /F2 6 0 R /F3 7 0 R /F4 8 0 R >> >>' : ''} >>`,
     ];
     const content = text ? [1, 2, 3, 4].map((font, index) => `BT /F${font} 24 Tf 20 ${160 - index * 35} Td (CVL) Tj ET`).join('\n') : '';
@@ -62,6 +63,9 @@ function syntheticPdf({ mediaBox = '0 0 612 200', annotations = 0, text = false 
     }
     for (let index = 0; index < annotations; index++) {
         objects.push(`<< /Type /Annot /Subtype /Widget /FT /Btn /T (bounded-${index}) /Rect [1 1 2 2] >>`);
+    }
+    for (const target of links) {
+        objects.push(`<< /Type /Annot /Subtype /Link /Rect [20 20 100 100] ${target} >>`);
     }
     let pdf = '%PDF-1.7\n';
     const offsets = [0];
@@ -101,6 +105,23 @@ async function nativeDocument(overrides = {}) {
     const wrapped = { ...api, ...Object.fromEntries(Object.entries(overrides).map(([name, wrap]) => [name, wrap(api[name])])) };
     return new PdfiumDocument(wrapped);
 }
+
+test('overlapping links select the topmost permitted target and ignore targetless overlays', async () => {
+    const cases = [
+        { links: ['/Dest [3 0 R /Fit]', ''], expected: { pageNumber: 1 } },
+        { links: ['/Dest [3 0 R /Fit]', '/A << /S /URI /URI (javascript:alert) >>'], expected: { pageNumber: 1 } },
+        { links: ['/Dest [3 0 R /Fit]', '/A << /S /URI /URI (https://example.com/top) >>', ''], expected: { url: 'https://example.com/top' } },
+        { links: [''], expected: null },
+    ];
+    for (const { links, expected } of cases) {
+        const pdf = await nativeDocument();
+        try {
+            pdf.open(syntheticPdf({ links }));
+            assert.deepEqual(pdf.linkAt(1, { width: 612, height: 200, x: 50, y: 150 }), expected);
+            assert.equal(pdf.linkAt(1, { width: 612, height: 200, x: 200, y: 150 }), null);
+        } finally { pdf.close(); }
+    }
+});
 
 test('synthetic narrow PDF reaches native allocation only with bounded final dimensions', async () => {
     let budget = 1;

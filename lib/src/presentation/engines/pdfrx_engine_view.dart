@@ -52,6 +52,7 @@ class _PdfrxEngineViewState extends State<PdfrxEngineView> {
   late final native.PdfDocumentRef _documentRef;
   late PdfViewerHelper _layout;
   native.PdfDocument? _document;
+  final _links = <int, Future<List<native.PdfLink>>>{};
   bool _paintReported = false;
 
   @override
@@ -175,14 +176,7 @@ class _PdfrxEngineViewState extends State<PdfrxEngineView> {
         linkHandlerParams: native.PdfLinkHandlerParams(
           linkColor: const Color(0x00000000),
           laidOverPageOverlays: false,
-          onLinkTap: (link) async {
-            final uri = link.url;
-            if (uri != null && const {'http', 'https', 'mailto', 'tel'}.contains(uri.scheme)) {
-              params.onExternalLinkTap?.call(uri);
-            } else if (link.dest != null) {
-              await _session.controller.goToDest(link.dest);
-            }
-          },
+          onLinkTap: (_) async {},
         ),
         interactionEndFrictionCoefficient: .4,
         onePassRenderingSizeThreshold: _conservative ? 900 : 1400,
@@ -195,6 +189,7 @@ class _PdfrxEngineViewState extends State<PdfrxEngineView> {
         ),
         onViewerReady: _ready,
         onDocumentChanged: (document) {
+          _links.clear();
           _document = document;
           if (document == null) {
             _namedActions.dispose();
@@ -226,37 +221,85 @@ class _PdfrxEngineViewState extends State<PdfrxEngineView> {
           final limit = _conservative ? 2048.0 : 4096.0;
           return math.min(scale, math.min(limit / page.width, limit / page.height));
         },
-        pageOverlaysBuilder: (context, rect, page) => [
-          native.PdfOverlayInteractionRegion(
-            child: const SizedBox.expand(),
-            onDoubleTap: (details) {
-              if (!_session.controller.isReady) return false;
-              final local = _session.controller.globalToLocal(details.globalPosition);
-              if (local == null) return false;
-              unawaited(
-                _session.controller.zoomUpOnLocalPosition(localPosition: local, loop: true),
-              );
-              return true;
-            },
-            onTap: (details) {
-              if (widget.layout.isGrid) {
-                widget.onPageTap(page.pageNumber);
+        pageOverlaysBuilder: (context, rect, page) {
+          return [
+            native.PdfOverlayInteractionRegion(
+              child: const SizedBox.expand(),
+              onDoubleTap: (details) {
+                if (!_session.controller.isReady) return false;
+                final local = _session.controller.globalToLocal(details.globalPosition);
+                if (local == null) return false;
+                unawaited(
+                  _session.controller.zoomUpOnLocalPosition(localPosition: local, loop: true),
+                );
                 return true;
-              }
-              unawaited(
-                _namedActions.handleTap(
-                  document: _document,
-                  page: page,
-                  pageRect: rect,
-                  pagePosition: details.localPosition,
-                  controller: _session.controller,
-                ),
-              );
-              return false;
-            },
-          ),
-        ],
+              },
+              onTap: (details) {
+                if (widget.layout.isGrid) {
+                  widget.onPageTap(page.pageNumber);
+                  return true;
+                }
+                unawaited(_handleSingleTap(page, rect, details.localPosition));
+                return false;
+              },
+            ),
+          ];
+        },
       ),
     );
+  }
+
+  Future<void> _handleSingleTap(native.PdfPage page, Rect pageRect, Offset position) async {
+    final document = _document;
+    final layout = widget.layout;
+    final handled = await _namedActions.handleTap(
+      document: document,
+      page: page,
+      pageRect: pageRect,
+      pagePosition: position,
+      controller: _session.controller,
+    );
+    if (handled || !mounted || !identical(_document, document) || widget.layout != layout) return;
+    await _openLinkAt(page, pageRect, position);
+  }
+
+  // pdfrx's own hit-test returns the first link under the tap, so an action-less link stacked
+  // on a button swallows it; take the topmost link that actually has a destination or URL.
+  Future<void> _openLinkAt(native.PdfPage page, Rect pageRect, Offset position) async {
+    try {
+      final document = _document;
+      final layout = widget.layout;
+      final links = await (_links[page.pageNumber] ??= page.loadLinks(compact: false));
+      if (!mounted || !identical(_document, document) || widget.layout != layout) return;
+      final point = position.toPdfPoint(page: page, scaledPageSize: pageRect.size);
+      native.PdfLink? hit;
+      for (final link in links) {
+        final uri = link.url;
+        final destination = link.dest;
+        final allowedUrl = uri != null && const {'http', 'https', 'mailto', 'tel'}.contains(uri.scheme);
+        final validDestination = destination != null &&
+            destination.pageNumber >= 1 &&
+            destination.pageNumber <= _session.controller.pageCount;
+        if (!allowedUrl && !validDestination) continue;
+        if (!link.rects.any((rect) => rect.containsPoint(point))) continue;
+        if (hit?.annotation != null && link.annotation == null) continue;
+        hit = link;
+      }
+      if (hit == null || !mounted) return;
+      final uri = hit.url;
+      if (uri != null && const {'http', 'https', 'mailto', 'tel'}.contains(uri.scheme)) {
+        widget.params.onExternalLinkTap?.call(uri);
+      } else if (hit.dest != null) {
+        final destination = hit.dest!;
+        final pageOnly = destination.params == null ||
+            destination.params!.isEmpty ||
+            destination.params!.every((value) => value == null);
+        if (pageOnly || !await _session.controller.goToDest(destination)) {
+          await _session.controller.goToPage(pageNumber: destination.pageNumber);
+        }
+      }
+    } catch (error, stackTrace) {
+      _error(error, stackTrace);
+    }
   }
 }

@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.1.4
+
+- Fall back once from fatal EmbedPDF failures to native pdfrx while retaining the last page and layout. PDF.js remains the default engine.
+- Raise the EmbedPDF document limit to 200 MiB and send larger documents directly to native progressive loading; other resource quotas remain terminal.
+- Ignore targetless overlapping PDFium links, prefer explicit native link annotations over detected URLs, and preserve coordinate-bearing native destinations.
+- Clear native link caches on document changes and discard asynchronous taps after document or layout replacement.
+- Cover overlapping link selection with a real PDFium-WASM regression test and align fallback documentation.
+
 ## 0.1.3
 
 - Polyfill `ReadableStream` async iteration in the PDF.js host page. WebKit lacks it, so PDF.js text extraction failed and in-document search found nothing on iOS.
