@@ -30,6 +30,28 @@ import {
     ScrollMode,
 } from "../pdfjs/web/pdf_viewer.mjs";
 
+// WebKit has no ReadableStream async iteration, which PDF.js text extraction (search) iterates.
+if (typeof ReadableStream !== "undefined" && !ReadableStream.prototype[Symbol.asyncIterator]) {
+    ReadableStream.prototype.values = async function* (options) {
+        const reader = this.getReader();
+        let finished = false;
+        try {
+            for (;;) {
+                const { done, value } = await reader.read();
+                if (done) {
+                    finished = true;
+                    return;
+                }
+                yield value;
+            }
+        } finally {
+            if (!finished && !options?.preventCancel) await reader.cancel().catch(() => {});
+            reader.releaseLock();
+        }
+    };
+    ReadableStream.prototype[Symbol.asyncIterator] = ReadableStream.prototype.values;
+}
+
 const PROTOCOL_VERSION = 1;
 const DOUBLE_TAP_MS = 300;
 const LONG_PRESS_MS = 500;
