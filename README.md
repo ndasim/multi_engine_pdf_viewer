@@ -9,7 +9,7 @@ The combined package does not support web or desktop.
 
 ```yaml
 dependencies:
-  multi_engine_pdf_viewer: ^0.1.4
+  multi_engine_pdf_viewer: ^0.1.5
 ```
 
 Android must allow cleartext HTTP for `127.0.0.1` only. See [Platform setup](#platform-setup). The runnable example in [`example/`](example/) already includes that configuration.
@@ -275,6 +275,11 @@ Android and iOS device smoke tests remain a release gate. Changing the default t
 For 0.1.4, the maintainer explicitly deferred new Android/iOS device smoke tests
 because no physical devices were connected. Automated checks do not qualify the
 new native fallback or link changes on physical devices.
+
+For 0.1.5, the maintainer explicitly deferred new physical iOS smoke tests until
+after publication. Automated touch-event regressions verify that EmbedPDF no
+longer clamps native dragging or momentum; they are not physical-device
+qualification. Existing PDF.js scrolling behavior is unchanged.
 
 PDF.js retains Apache-2.0 (`assets/pdfjs/LICENSE`); EmbedPDF retains its MIT wrapper,
 PDFium third-party and OFL font notices. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

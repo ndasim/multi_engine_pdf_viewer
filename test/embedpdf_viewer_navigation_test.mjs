@@ -3,11 +3,11 @@ import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import vm from 'node:vm';
 import { failure, limits } from '../assets/embedpdf_viewer/pdfium_document.mjs';
-import { createPageScrollLimiter } from '../assets/viewer/page_scroll_limiter.mjs';
 
 async function viewer() {
     const events = [];
     const requests = [];
+    const scrolls = [];
     const frames = [];
     const timers = [];
     const intervals = [];
@@ -22,6 +22,7 @@ async function viewer() {
         PdfJsBridge: { postMessage: json => events.push(JSON.parse(json)) },
         addEventListener: (name, callback) => windowListeners.set(name, callback),
         scrollBy: ({ left = 0, top = 0 }) => {
+            scrolls.push({ left, top });
             const maximumX = Math.max(0, 1080 * Number.parseFloat(root.style.width ?? '100%') / 100 - window.innerWidth);
             scrollX = Math.max(0, Math.min(maximumX, scrollX + left));
             scrollY = Math.max(0, scrollY + top);
@@ -98,10 +99,9 @@ async function viewer() {
     const module = new vm.SourceTextModule(await readFile(new URL('../assets/embedpdf_viewer/viewer.mjs', import.meta.url), 'utf8'), {
         context, initializeImportMeta: meta => { meta.url = new URL('../assets/embedpdf_viewer/viewer.mjs', import.meta.url).href; },
     });
-    await module.link(() => new vm.SyntheticModule(['limits', 'failure', 'createPageScrollLimiter'], function () {
+    await module.link(() => new vm.SyntheticModule(['limits', 'failure'], function () {
         this.setExport('limits', limits);
         this.setExport('failure', failure);
-        this.setExport('createPageScrollLimiter', createPageScrollLimiter);
     }, { context }));
     await module.evaluate();
     const settle = async () => {
@@ -122,7 +122,7 @@ async function viewer() {
     await send('open', { config: { session: 'current', initialPage: 2, columns: 1, margin: 8 } });
     events.length = 0;
     return {
-        root, events, requests, settle, send, observe, window,
+        root, events, requests, scrolls, settle, send, observe, window,
         tick: async () => { intervals.forEach(callback => callback()); await settle(); },
         visibility: async hidden => {
             document.hidden = hidden;
@@ -240,3 +240,36 @@ test('a named action emits exactly one navigation; manual scrolling releases the
     await view.settle();
     assert.deepEqual(view.pages(), [3, 6, 3]);
 });
+
+for (const [start, target] of [[2, 7], [10, 3]]) {
+    for (const finish of [null, 'touchend', 'touchcancel']) {
+        test(`native touch scroll ${start} -> ${target} is not clamped ${finish ?? 'during drag'}`, async () => {
+            const view = await viewer();
+            await view.send('goToPage', { pageNumber: start });
+            view.observe([start]);
+            await view.settle();
+            view.events.length = 0;
+            let prevented = false;
+            const touch = {
+                touches: [{ clientX: 540, clientY: 700 }],
+                preventDefault() { prevented = true; },
+            };
+            view.root.listeners.get('touchstart')(touch);
+            view.root.listeners.get('touchmove')(touch);
+            if (finish) view.root.listeners.get(finish)({ touches: [] });
+
+            const offset = view.window.scrollY + view.root.children[target - 1].getBoundingClientRect().top;
+            view.scrolls.length = 0;
+            view.observe([target]);
+            view.window.scrollBy({ top: offset - view.window.scrollY });
+            assert.equal(view.window.scrollY, offset);
+            await view.settle();
+
+            assert.equal(prevented, false);
+            assert.equal(view.window.scrollY, offset);
+            assert.equal(view.scrolls.length, 1);
+            assert.deepEqual(view.pages(), [target]);
+            assert.equal(view.events.filter(event => event.type === 'error').length, 0);
+        });
+    }
+}

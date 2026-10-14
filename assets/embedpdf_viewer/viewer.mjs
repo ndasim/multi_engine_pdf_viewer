@@ -1,5 +1,4 @@
 import { limits, failure } from './pdfium_document.mjs';
-import { createPageScrollLimiter } from '../viewer/page_scroll_limiter.mjs';
 
 const root = document.getElementById('pages');
 const state = {
@@ -10,12 +9,6 @@ const state = {
     outline: [], rendered: new Map(), visible: new Set(), pending: new Map(),
     anchor: null,
 };
-const scrollLimiter = createPageScrollLimiter({
-    pages: () => Array.from(root.children),
-    pageIndex: () => state.pageNumber - 1,
-    offset: () => window.scrollY,
-    setOffset: value => window.scrollBy({ top: value - window.scrollY, behavior: 'instant' }),
-});
 let work = Promise.resolve();
 let queuedJobs = 0;
 function post(type, payload = {}) {
@@ -184,7 +177,6 @@ function restoreAnchor() {
 }
 function releaseAnchor() { state.anchor = null; }
 function currentPage() {
-    if (scrollLimiter.constrain()) return;
     if (!state.pageCount || state.disposed || state.fatal || state.anchor) return;
     const candidates = [...state.visible].map(number => ({ number, rect: root.children[number - 1].getBoundingClientRect() }))
         .filter(({ rect }) => rect.bottom > 0 && rect.top < window.innerHeight && rect.right > 0 && rect.left < window.innerWidth);
@@ -202,7 +194,6 @@ const observer = new IntersectionObserver((entries) => {
 }, { rootMargin: '120px 0px' });
 window.addEventListener('scroll', currentPage, { passive: true });
 async function goToPage(number) {
-    scrollLimiter.reset();
     if (!Number.isInteger(number) || !state.pageCount) throw failure('page-range');
     number = Math.max(1, Math.min(state.pageCount, number));
     const changed = number !== state.pageNumber;
@@ -215,7 +206,6 @@ async function goToPage(number) {
     restoreAnchor();
 }
 function setLayout(columns, anchor = captureAnchor()) {
-    scrollLimiter.reset();
     if (!Number.isInteger(columns) || columns < 1 || columns > 6) throw failure('layout-range');
     state.anchor = anchor;
     const columnsChanged = state.columns !== columns;
@@ -256,7 +246,6 @@ root.addEventListener('wheel', event => {
     setZoom(state.zoom * (event.deltaY > 0 ? 0.9 : 1.1), captureAnchor(event.clientX, event.clientY));
 }, { passive: false });
 window.addEventListener('wheel', event => {
-    scrollLimiter.reset();
     if (!event.ctrlKey) releaseAnchor();
 }, { passive: true });
 window.addEventListener('keydown', event => {
@@ -270,7 +259,6 @@ const touchPoint = touches => ({
     distance: Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY)
 });
 root.addEventListener('touchstart', event => {
-    scrollLimiter.begin(state.columns === 1 ? event.touches.length : 0);
     if (event.touches.length === 1) releaseAnchor();
     if (event.touches.length !== 2) return;
     event.preventDefault();

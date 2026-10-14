@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.1.5
+
+- Remove the four-page touch-scroll limiter from EmbedPDF so native dragging and momentum no longer snap back at the gesture boundary. PDF.js behavior is unchanged.
+- Cover forward and backward touch scrolling during dragging, after touch end, and after touch cancellation while preserving pinch zoom and navigation anchors.
+
 ## 0.1.4
 
 - Fall back once from fatal EmbedPDF failures to native pdfrx while retaining the last page and layout. PDF.js remains the default engine.
