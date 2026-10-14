@@ -19,7 +19,6 @@
 // below the floor of every vendored bundle, so nothing in this file can make
 // that engine work. See docs/implementation/evidence/android9_stock_webview.md.
 import * as pdfjsLib from "../pdfjs/build/pdf.min.mjs";
-import { createPageScrollLimiter } from "./page_scroll_limiter.mjs";
 import {
     EventBus,
     FindState,
@@ -76,14 +75,6 @@ const state = {
     ready: false,
     lastQuery: "",
 };
-
-const scrollLimiter = createPageScrollLimiter({
-    pages: () => Array.from(viewer.querySelectorAll('.page')),
-    pageIndex: () => (state.pdfViewer?.currentPageNumber ?? 1) - 1,
-    offset: () => container.scrollTop,
-    setOffset: value => { container.scrollTop = value; },
-});
-container.addEventListener('wheel', () => scrollLimiter.reset(), { passive: true });
 
 function post(type, payload = {}) {
     const channel = globalThis.PdfJsBridge;
@@ -260,7 +251,6 @@ class AnchoredPDFViewer extends PDFViewer {
     }
 
     _getVisiblePages() {
-        scrollLimiter.constrain();
         this.restoreViewportAnchor();
         const visible = super._getVisiblePages();
         if (this.viewportAnchor && this.scrollMode === ScrollMode.WRAPPED) {
@@ -278,7 +268,6 @@ class AnchoredPDFViewer extends PDFViewer {
     }
 
     scrollPageIntoView(options) {
-        scrollLimiter.reset();
         if (this.preservingAnchor && this.viewportAnchor) {
             super.scrollPageIntoView({ pageNumber: this.viewportAnchor.pageNumber });
             this.restoreViewportAnchor();
@@ -413,7 +402,6 @@ function pageAnchorAt(point) {
 }
 
 function zoomTo(scale, point) {
-    scrollLimiter.reset();
     const { pdfViewer } = state;
     const target = clamp(scale, minScale(), maxScale());
     if (Math.abs(target - pdfViewer.currentScale) < 0.001) return;
@@ -458,7 +446,6 @@ let lastTap = null;
 container.addEventListener(
     "touchstart",
     (event) => {
-        scrollLimiter.begin(state.columns === 1 ? event.touches.length : 0);
         if (!state.ready) return;
         if (event.touches.length === 2) {
             event.preventDefault();

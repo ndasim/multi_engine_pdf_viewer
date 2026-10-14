@@ -137,23 +137,23 @@ async function viewer() {
     };
 }
 
-    test('WebView visibility never overrides an inactive Flutter route', async () => {
-        const view = await viewer();
-        await view.send('setActive', { active: false });
-        await view.visibility(true);
-        await view.visibility(false);
-        await view.tick();
-        assert.equal(view.requests.filter(request => request.type === 'ping').length, 0);
-        assert.equal(view.events.filter(event => event.type === 'heartbeat').length, 0);
-        await view.visibility(true);
-        await view.send('setActive', { active: true });
-        await view.tick();
-        assert.equal(view.requests.filter(request => request.type === 'ping').length, 0);
-        await view.visibility(false);
-        await view.tick();
-        assert.equal(view.requests.filter(request => request.type === 'ping').length, 1);
-        assert.ok(view.events.some(event => event.type === 'heartbeat'));
-    });
+test('WebView visibility never overrides an inactive Flutter route', async () => {
+    const view = await viewer();
+    await view.send('setActive', { active: false });
+    await view.visibility(true);
+    await view.visibility(false);
+    await view.tick();
+    assert.equal(view.requests.filter(request => request.type === 'ping').length, 0);
+    assert.equal(view.events.filter(event => event.type === 'heartbeat').length, 0);
+    await view.visibility(true);
+    await view.send('setActive', { active: true });
+    await view.tick();
+    assert.equal(view.requests.filter(request => request.type === 'ping').length, 0);
+    await view.visibility(false);
+    await view.tick();
+    assert.equal(view.requests.filter(request => request.type === 'ping').length, 1);
+    assert.ok(view.events.some(event => event.type === 'heartbeat'));
+});
 
 function samePoint(actual, expected) {
     assert.ok(Math.abs(actual.x - expected.x) < 1e-9, `horizontal anchor: ${actual.x} != ${expected.x}`);

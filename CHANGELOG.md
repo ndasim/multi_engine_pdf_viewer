@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.1.6
+
+- Remove the four-page touch-scroll limiter from all PDF.js tiers, preserving native dragging and momentum without changing pinch zoom, grid layout or navigation anchors.
+- Remove the unused shared scroll limiter and cover forward and backward scrolling during dragging, after touch end and after touch cancellation in legacy, compatibility and current tiers.
+
 ## 0.1.5
 
 - Remove the four-page touch-scroll limiter from EmbedPDF so native dragging and momentum no longer snap back at the gesture boundary. PDF.js behavior is unchanged.

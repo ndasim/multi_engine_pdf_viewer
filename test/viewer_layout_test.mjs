@@ -2,39 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test, { after, before } from "node:test";
 import vm from "node:vm";
-import { createPageScrollLimiter } from "../assets/viewer/page_scroll_limiter.mjs";
 
 const assets = new URL("../assets/", import.meta.url);
-test('single-touch momentum is limited to four actual pages in both directions', () => {
-    let offset = 5000;
-    let index = 5;
-    const elements = Array.from({ length: 20 }, (_, page) => ({
-        getBoundingClientRect: () => ({ top: page * 1000 - offset }),
-    }));
-    const limiter = createPageScrollLimiter({
-        pages: () => elements, pageIndex: () => index,
-        offset: () => offset, setOffset: value => { offset = value; },
-    });
-    limiter.begin(1);
-    offset = 15000;
-    assert.equal(limiter.constrain(), true);
-    assert.equal(offset, 9000);
-    offset = 0;
-    limiter.constrain();
-    assert.equal(offset, 1000);
-    index = 1;
-    limiter.begin(1);
-    offset = 12000;
-    limiter.constrain();
-    assert.equal(offset, 5000);
-    limiter.begin(2);
-    offset = 19000;
-    assert.equal(limiter.constrain(), false);
-    limiter.begin(1);
-    limiter.reset();
-    offset = 0;
-    assert.equal(limiter.constrain(), false);
-});
 const source = readFileSync(new URL("viewer/viewer.mjs", assets), "utf8");
 const playwrightModule = process.env.PDFJS_PLAYWRIGHT_MODULE;
 let browser;
@@ -63,14 +32,18 @@ function layoutFixture(tier) {
     const container = {
         clientWidth: 1200, clientHeight: 800, clientLeft: 0, clientTop: 0,
         scrollTop: 0, scrollLeft: 0, getBoundingClientRect: () => ({ top: 0, left: 0 }),
-        addEventListener(type, listener) { listeners.set(type, listener); }
+        addEventListener(type, listener) {
+            const previous = listeners.get(type);
+            listeners.set(type, (event) => { previous?.(event); listener(event); });
+        }
     };
     const state = { columns: 3, config: { margin: 8 }, ready: true, fitScale: 1 };
     const context = vm.createContext({
         container, state, DEFAULT_CACHE_SIZE: 10,
-        scrollLimiter: { reset() { }, constrain() { } },
         ScrollMode: { PAGE: 3, VERTICAL: 0, HORIZONTAL: 1, WRAPPED: 2 }, SpreadMode: { NONE: 0 },
-        viewer: { classList: { toggle() { } } }, positiveInt: (number, fallback) => number > 0 ? number : fallback,
+        viewer: { classList: { toggle() { } }, style: {} }, positiveInt: (number, fallback) => number > 0 ? number : fallback,
+        TAP_SLOP_PX: 12, LONG_PRESS_MS: 500, DOUBLE_TAP_MS: 300, DOUBLE_TAP_DISTANCE_PX: 40, MAX_SCALE: 6,
+        clamp: (value, minimum, maximum) => Math.min(Math.max(value, minimum), maximum),
         ResizeObserver: class { observe() { } }, setTimeout, clearTimeout,
         eventBus: { dispatch(type, payload) { if (type === "pagechanging") callbacks.push(payload.pageNumber); } },
     });
@@ -159,6 +132,7 @@ function layoutFixture(tier) {
             ${method(engine, "executeNamedAction", "PDFLinkService")}
         };
     `, context);
+    vm.runInContext(source.slice(source.indexOf("const minScale ="), source.indexOf("// iOS fires its own pinch")), context);
     return {
         context, state, container, callbacks, listeners,
         run: (code) => vm.runInContext(code, context),
@@ -170,6 +144,37 @@ function layoutFixture(tier) {
 }
 
 for (const tier of ["current", "compat", "legacy"]) {
+    for (const phase of ["drag", "touchend", "touchcancel"]) {
+        for (const direction of ["forward", "backward"]) {
+            test(`${tier}: ${direction} touch scrolling beyond four pages stays native during ${phase}`, () => {
+                const fixture = layoutFixture(tier);
+                const initialPage = direction === "forward" ? 2 : 18;
+                const targetPage = direction === "forward" ? 14 : 3;
+                let prevented = false;
+                fixture.run(`setColumns(1); state.pdfViewer.scrollPageIntoView({ pageNumber: ${initialPage} });`);
+                fixture.listeners.get("touchstart")({
+                    touches: [{ clientX: 100, clientY: 200 }], timeStamp: 0,
+                    preventDefault() { prevented = true; },
+                });
+                fixture.listeners.get("touchmove")({
+                    touches: [{ clientX: 100, clientY: direction === "forward" ? 100 : 300 }],
+                    preventDefault() { prevented = true; },
+                });
+                if (phase !== "drag") {
+                    fixture.listeners.get(phase)({ touches: [], timeStamp: 100,
+                        preventDefault() { prevented = true; } });
+                }
+                const offset = fixture.state.pdfViewer.getPageView(targetPage - 1).div.offsetTop;
+                fixture.container.scrollTop = offset;
+                fixture.state.pdfViewer.update();
+                assert.equal(fixture.container.scrollTop, offset);
+                assert.equal(fixture.state.pdfViewer.currentPageNumber, targetPage);
+                assert.equal(fixture.state.pdfViewer.viewportAnchor, null);
+                assert.equal(prevented, false, "Single-touch scrolling must remain browser-owned");
+            });
+        }
+    }
+
     test(`${tier}: shipped wrapped heuristic drifts without an anchor`, () => {
         const fixture = layoutFixture(tier);
         fixture.run("applyLayout(7); state.pdfViewer.viewportAnchor = null; state.pdfViewer.update();");
