@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.1.7
+
+- Coalesce identical PDFium form-action callbacks from a single EmbedPDF click so PDFs that repeat `NextPage` or `PrevPage` navigate once instead of failing with `ambiguous-widget-action`. Conflicting actions remain rejected.
+- Verify forward and backward navigation with a real PDF in the iOS simulator. Unit tests and new physical Android/iOS smoke checks were explicitly deferred by the maintainer for this release.
+
 ## 0.1.6
 
 - Remove the four-page touch-scroll limiter from all PDF.js tiers, preserving native dragging and momentum without changing pinch zoom, grid layout or navigation anchors.

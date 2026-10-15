@@ -292,8 +292,9 @@ export class PdfiumDocument {
                 this.api.FORM_OnLButtonDown(environment, page, 0, position.x, position.y);
                 this.api.FORM_OnLButtonUp(environment, page, 0, position.x, position.y);
             } finally { setPhase('idle'); }
-            if (actions.length > 1) throw failure('ambiguous-widget-action');
-            const name = actions[0];
+            const uniqueActions = [...new Map(actions.map(action => [JSON.stringify(action), action])).values()];
+            if (uniqueActions.length > 1) throw failure('ambiguous-widget-action');
+            const name = uniqueActions[0];
             const offset = name === 'NextPage' ? 1 : name === 'PrevPage' ? -1 : 0;
             const goToTarget = name?.kind === 'goto' && Number.isInteger(name.pageNumber) && name.pageNumber >= 1 && name.pageNumber <= this.pageCount ? name.pageNumber : null;
             const namedTarget = offset ? number + offset : name === 'FirstPage' ? 1 : name === 'LastPage' ? this.pageCount : null;
@@ -303,7 +304,7 @@ export class PdfiumDocument {
             // so do not claim a target and do not declare the action handled.
             const handled = target !== null || (name?.kind !== 'goto');
             return {
-                actions: handled ? actions : [], targetPage: target,
+                actions: handled ? uniqueActions : [], targetPage: target,
                 ...(name?.kind === 'uri' && /^(https?:|mailto:|tel:)/i.test(name.url) && name.url.length <= 8192 ? { url: name.url } : {})
             };
         }));

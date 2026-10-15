@@ -287,6 +287,11 @@ compatibility and current tiers no longer clamp single-touch dragging or
 momentum, while preserving zoom and navigation anchors. These checks are not
 physical iOS qualification.
 
+For 0.1.7, the maintainer explicitly prohibited running unit tests and deferred
+new physical Android/iOS smoke checks. Real-PDF PDFium-WASM inspection and iOS
+simulator forward/backward taps verify the duplicate form-action fix only;
+they do not qualify physical devices or the full automated regression suite.
+
 The maintainer also deferred the pre-existing syntax-floor test failure that
 requires `??=` in the shared viewer source. The same assertion fails on the
 unmodified 0.1.5 release. Other automated checks remain required for 0.1.6.
