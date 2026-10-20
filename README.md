@@ -128,6 +128,21 @@ the page. Node/WASM fixture proof records 66 next/previous clicks with one callb
 each, and all 78 environments released. This is not mobile lifetime certification.
 See [implementation ownership notes](lib/src/data/embedpdf/IMPLEMENTATION.md).
 
+Pinch zoom updates the anchored page layout once per animation frame, without
+scaling the whole document into a compositor layer or switching geometry at
+touch end. Raster work pauses during pinch and resumes after a 150 ms settling
+delay. Zoom and column changes retain the old canvas until a fully painted
+replacement is ready, release its backing store after replacement, and reuse
+rasters already at the pixel cap. The cache reserves replacement headroom and
+evicts offscreen pages rather than clearing visible pages to make room. These
+are raster budgets, not a hard cap on total WebView, GPU or PDFium memory.
+
+This adapter already calls PDFium's low-level APIs, but inside WebAssembly in a
+WebView worker. It cannot turn those calls into native FFI calls by configuration.
+For native PDFium rendering and Flutter-owned gestures, select the existing
+`PdfViewerEngine.pdfrx` adapter instead; that is an engine change, not an EmbedPDF
+optimization, and requires its own device qualification.
+
 Unsupported startup capabilities or an observable fatal EmbedPDF failure retire
 that session and fall back **once to pdfrx**, preserving the last page and layout.
 The failed worker is stopped before replacement; retired callbacks are ignored.

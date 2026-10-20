@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.1.8
+
+- Keep the same anchored page geometry throughout EmbedPDF pinch, touch end and cancellation instead of transforming the full document and relaying it out on release.
+- Defer zoom raster work until the gesture settles; replace canvases atomically, release old backing stores and reuse pixel-capped resolutions.
+- Reserve raster-cache headroom for replacements and recheck the budget when overlapping worker results arrive, without evicting visible pages.
+- Cover pinch geometry, stale render results, large-document limits, overlapping navigation and real-browser pinch thresholds while preserving fatal fallback.
+
 ## 0.1.7
 
 - Coalesce identical PDFium form-action callbacks from a single EmbedPDF click so PDFs that repeat `NextPage` or `PrevPage` navigate once instead of failing with `ambiguous-widget-action`. Conflicting actions remain rejected.

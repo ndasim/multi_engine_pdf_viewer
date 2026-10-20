@@ -1,4 +1,4 @@
-import { limits, failure } from './pdfium_document.mjs';
+import { limits, failure, rasterSize } from './pdfium_document.mjs';
 
 const root = document.getElementById('pages');
 const state = {
@@ -11,9 +11,17 @@ const state = {
 };
 let work = Promise.resolve();
 let queuedJobs = 0;
+let zoomTimer = 0;
 function post(type, payload = {}) {
     if (state.disposed) return;
     window.PdfJsBridge?.postMessage(JSON.stringify({ v: 1, type, ...payload, session: state.config?.session }));
+}
+function applyPinch(point) {
+    if (!pinch) return;
+    pinch.lastPoint = point;
+    pinch.factor = Math.max(1 / pinch.zoom, Math.min(4 / pinch.zoom, point.distance / pinch.distance));
+    setZoom(pinch.zoom * pinch.factor,
+        { ...pinch.anchor, clientX: point.x, clientY: point.y }, false);
 }
 function error(error) {
     if (state.disposed || state.fatal) return;
@@ -98,43 +106,63 @@ function clearRaster(pageNumber) {
     root.children[pageNumber - 1]?.querySelector('.highlights')?.replaceChildren();
     state.rendered.delete(pageNumber);
 }
-function trim(keep) {
-    const total = () => [...state.rendered.values()].reduce((sum, size) => sum + size, 0);
-    while (state.rendered.size > limits.cachedPages || total() > limits.cachedPixels) {
-        const candidate = [...state.rendered.keys()].find(number => number !== keep && !state.visible.has(number))
-            ?? [...state.rendered.keys()].find(number => number !== keep);
-        if (!candidate) break;
+function trim(keep, incomingPixels) {
+    const total = () => [...state.rendered.values()].reduce((sum, size) => sum + size.width * size.height, 0);
+    // Reserve space for the replacement while the old backing store is still live.
+    while (state.rendered.size + 1 > limits.cachedPages || total() + incomingPixels > limits.cachedPixels) {
+        const candidate = [...state.rendered.keys()].find(number =>
+            number !== keep && number !== state.pageNumber && !state.visible.has(number));
+        if (!candidate) return false;
         clearRaster(candidate);
     }
+    return true;
 }
 const queued = new Set();
 const renderJobs = new Map();
 let rendering = false;
 function render(pageNumber) {
     const existing = renderJobs.get(pageNumber);
-    if (existing) return existing.then(() => state.rendered.has(pageNumber) || state.disposed || state.fatal ? undefined : render(pageNumber));
+    if (existing) return existing.then(() => render(pageNumber));
     const operation = paint(pageNumber).finally(() => renderJobs.delete(pageNumber));
     renderJobs.set(pageNumber, operation);
     return operation;
 }
 async function paint(pageNumber) {
     const page = root.children[pageNumber - 1];
-    if (!page || state.rendered.has(pageNumber) || state.disposed || state.fatal) return;
+    if (!page || pinch || state.disposed || state.fatal) return;
     const generation = state.generation;
     const config = state.config;
     const configuredPixels = state.pageCount >= config.largeDocumentPageCount ? config.largeDocumentMaxCanvasPixels : config.maxCanvasPixels;
     const pixels = Math.min(limits.rasterPixels, configuredPixels || limits.rasterPixels, state.columns > 1 ? Math.floor(limits.cachedPixels / limits.cachedPages) : limits.rasterPixels);
-    const result = await serialized('render', { pageNumber, width: Math.max(32, Math.round(page.clientWidth * Math.min(2, window.devicePixelRatio || 1))), pixels }, 20000);
-    if (state.disposed || state.fatal || generation !== state.generation) return;
+    const width = Math.max(32, Math.round(page.clientWidth * Math.min(2, window.devicePixelRatio || 1)));
+    const cached = state.rendered.get(pageNumber);
+    const target = cached ? rasterSize(cached.pageWidth, cached.pageHeight, width, pixels) : null;
+    if (cached && cached.width === target.width && cached.height === target.height) return;
+    if (!trim(pageNumber, target ? target.width * target.height : pixels)) return;
+    const zoom = state.zoom;
+    const result = await serialized('render', { pageNumber, width, pixels }, 20000);
+    if (state.disposed || state.fatal) return;
+    if (pinch || generation !== state.generation || zoom !== state.zoom) {
+        queued.add(pageNumber);
+        return;
+    }
+    if (!trim(pageNumber, result.width * result.height)) return;
     page.style.setProperty('--ratio', `${result.pageWidth / result.pageHeight}`);
     restoreAnchor();
     const canvas = document.createElement('canvas');
     canvas.width = result.width;
     canvas.height = result.height;
     canvas.getContext('2d').putImageData(new ImageData(result.pixels, result.width, result.height), 0, 0);
-    page.prepend(canvas);
-    state.rendered.set(pageNumber, result.width * result.height);
-    trim(pageNumber);
+    const previous = page.querySelector('canvas');
+    if (previous) {
+        previous.replaceWith(canvas);
+        previous.width = 0;
+        previous.height = 0;
+    } else page.prepend(canvas);
+    state.rendered.set(pageNumber, {
+        width: result.width, height: result.height,
+        pageWidth: result.pageWidth, pageHeight: result.pageHeight,
+    });
     highlights(pageNumber);
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     if (!state.firstPaint && !state.disposed && !state.fatal && generation === state.generation) {
@@ -144,10 +172,10 @@ async function paint(pageNumber) {
     }
 }
 async function drain() {
-    if (rendering) return;
+    if (rendering || pinch || zoomTimer) return;
     rendering = true;
     try {
-        while (queued.size && !state.disposed && !state.fatal) {
+        while (queued.size && !pinch && !zoomTimer && !state.disposed && !state.fatal) {
             const next = queued.has(state.pageNumber) ? state.pageNumber : queued.values().next().value;
             queued.delete(next);
             if (state.visible.has(next) || next === state.pageNumber) await render(next);
@@ -156,6 +184,18 @@ async function drain() {
     finally { rendering = false; }
 }
 function queue(pageNumber) { queued.add(pageNumber); void drain(); }
+function refreshVisible() {
+    for (const number of state.visible) queued.add(number);
+    queued.add(state.pageNumber);
+    void drain();
+}
+function scheduleRefresh() {
+    clearTimeout(zoomTimer);
+    zoomTimer = setTimeout(() => {
+        zoomTimer = 0;
+        refreshVisible();
+    }, 150);
+}
 function captureAnchor(clientX = window.innerWidth / 2, clientY = 0) {
     const page = root.children[state.pageNumber - 1];
     if (!page) return null;
@@ -170,9 +210,10 @@ function restoreAnchor() {
     if (!anchor || state.disposed || state.fatal) return;
     const rect = root.children[anchor.pageNumber - 1]?.getBoundingClientRect();
     if (!rect) return;
-    window.scrollBy({
-        left: rect.left + anchor.x * rect.width - anchor.clientX,
-        top: rect.top + anchor.y * rect.height - anchor.clientY, behavior: 'instant'
+    window.scrollTo({
+        left: window.scrollX + rect.left + anchor.x * rect.width - anchor.clientX,
+        top: window.scrollY + rect.top + anchor.y * rect.height - anchor.clientY,
+        behavior: 'instant'
     });
 }
 function releaseAnchor() { state.anchor = null; }
@@ -212,32 +253,18 @@ function setLayout(columns, anchor = captureAnchor()) {
     state.columns = columns;
     root.style.setProperty('--columns', columns);
     restoreAnchor();
-    // Zoom changes (root width) call setLayout; only a real column change
-    // invalidates existing rasters. Keeping the canvas avoids the flicker of
-    // clearing the page and waiting for a re-render on every zoom step.
     if (columnsChanged) {
         state.generation++;
-        for (const number of [...state.rendered.keys()]) clearRaster(number);
-        for (const number of state.visible) queue(number);
-        queue(state.pageNumber);
-    } else {
-        // Same columns, only zoom/scale changed: keep existing canvas in place,
-        // re-render at higher resolution only when the zoom factor crosses the
-        // 2x cap needed to keep the raster sharp. Never clear first.
-        const targetPixels = state.pageCount >= state.config.largeDocumentPageCount ? state.config.largeDocumentMaxCanvasPixels : state.config.maxCanvasPixels;
-        for (const number of [...state.rendered.keys()]) {
-            const currentPixels = state.rendered.get(number) ?? 0;
-            const desiredPixels = Math.min(limits.rasterPixels, Math.round(currentPixels * state.zoom));
-            if (desiredPixels > currentPixels * 2.2 && desiredPixels <= (targetPixels || limits.rasterPixels)) queue(number);
-        }
+        scheduleRefresh();
     }
 }
-function setZoom(zoom, anchor = captureAnchor()) {
+function setZoom(zoom, anchor = captureAnchor(), refresh = true) {
     if (!Number.isFinite(zoom)) throw failure('zoom-range');
     state.anchor = anchor;
     state.zoom = Math.max(1, Math.min(4, zoom));
     root.style.width = `${state.zoom * 100}%`;
-    setLayout(state.columns, anchor);
+    restoreAnchor();
+    if (refresh) scheduleRefresh();
 }
 root.addEventListener('dblclick', event => setZoom(state.zoom === 1 ? 2 : 1, captureAnchor(event.clientX, event.clientY)));
 root.addEventListener('wheel', event => {
@@ -264,18 +291,45 @@ root.addEventListener('touchstart', event => {
     event.preventDefault();
     pointer = null;
     const point = touchPoint(event.touches);
-    pinch = point.distance > 0 ? { distance: point.distance, zoom: state.zoom, anchor: captureAnchor(point.x, point.y) } : null;
+    if (point.distance <= 0) return;
+    const anchor = captureAnchor(point.x, point.y);
+    if (!anchor) return;
+    clearTimeout(zoomTimer);
+    zoomTimer = 0;
+    state.anchor = anchor;
+    pinch = {
+        distance: point.distance,
+        zoom: state.zoom,
+        anchor,
+        factor: 1,
+        frame: 0,
+        lastPoint: point,
+    };
 }, { passive: false });
 root.addEventListener('touchmove', event => {
     if (!pinch) { releaseAnchor(); return; }
     if (event.touches.length !== 2) return;
     event.preventDefault();
     const point = touchPoint(event.touches);
-    if (pinch.anchor) setZoom(pinch.zoom * point.distance / pinch.distance,
-        { ...pinch.anchor, clientX: point.x, clientY: point.y });
+    if (!pinch.anchor) return;
+    pinch.lastPoint = point;
+    if (!pinch.frame) {
+        pinch.frame = requestAnimationFrame(() => {
+            if (!pinch) return;
+            pinch.frame = 0;
+            applyPinch(pinch.lastPoint);
+        });
+    }
 }, { passive: false });
-root.addEventListener('touchend', () => { pinch = null; });
-root.addEventListener('touchcancel', () => { pinch = null; });
+function finishPinch(event) {
+    if (!pinch || event.touches.length >= 2) return;
+    if (pinch.frame) cancelAnimationFrame(pinch.frame);
+    applyPinch(pinch.lastPoint);
+    pinch = null;
+    scheduleRefresh();
+}
+root.addEventListener('touchend', finishPinch);
+root.addEventListener('touchcancel', finishPinch);
 let pointer = null;
 root.addEventListener('pointerdown', event => {
     if (!event.isPrimary) { pointer = null; return; }
@@ -399,6 +453,9 @@ function dispose() {
     state.searchGeneration++;
     clearInterval(watchdog);
     clearInterval(handshake);
+    clearTimeout(zoomTimer);
+    if (pinch?.frame) cancelAnimationFrame(pinch.frame);
+    pinch = null;
     observer.disconnect();
     state.worker?.postMessage({ id: ++state.sequence, type: 'dispose' });
     state.worker?.terminate();

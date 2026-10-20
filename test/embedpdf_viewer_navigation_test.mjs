@@ -2,25 +2,31 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import vm from 'node:vm';
-import { failure, limits } from '../assets/embedpdf_viewer/pdfium_document.mjs';
+import { failure, limits, rasterSize } from '../assets/embedpdf_viewer/pdfium_document.mjs';
 
-async function viewer() {
+async function viewer({ pageCount = 189, config = {} } = {}) {
     const events = [];
     const requests = [];
     const scrolls = [];
-    const frames = [];
-    const timers = [];
+    const frames = new Map();
+    const timers = new Map();
     const intervals = [];
     const documentListeners = new Map();
     const windowListeners = new Map();
     let scrollX = 0;
     let scrollY = 0;
     let observed;
+    let sequence = 0;
+    let now = 0;
+    let holdRenders = false;
+    const heldRenders = [];
     const window = {
+        get scrollX() { return scrollX; },
         get scrollY() { return scrollY; },
         innerWidth: 1080, innerHeight: 1400, devicePixelRatio: 1,
         PdfJsBridge: { postMessage: json => events.push(JSON.parse(json)) },
         addEventListener: (name, callback) => windowListeners.set(name, callback),
+        scrollTo: ({ left = scrollX, top = scrollY }) => window.scrollBy({ left: left - scrollX, top: top - scrollY }),
         scrollBy: ({ left = 0, top = 0 }) => {
             scrolls.push({ left, top });
             const maximumX = Math.max(0, 1080 * Number.parseFloat(root.style.width ?? '100%') / 100 - window.innerWidth);
@@ -40,6 +46,11 @@ async function viewer() {
         }
         appendChild(child) { child.parent = this; this.children.push(child); }
         prepend(child) { child.parent = this; this.children.unshift(child); }
+        replaceWith(child) {
+            const index = this.parent.children.indexOf(this);
+            child.parent = this.parent;
+            this.parent.children[index] = child;
+        }
         replaceChildren() { this.children = []; }
         remove() { this.parent.children = this.parent.children.filter(child => child !== this); }
         querySelector(selector) { return this.children.find(child => selector === 'canvas' ? child.tag === 'canvas' : child.className === selector.slice(1)); }
@@ -76,20 +87,25 @@ async function viewer() {
     class Worker {
         postMessage({ id, type, payload }) {
             requests.push({ type, payload });
-            const result = type === 'open' ? { pageCount: 189, capabilities: 'test' }
-                : type === 'render' ? { width: 16, height: 20, pageWidth: 612, pageHeight: 792 + payload.pageNumber * 3, pixels: new Uint8ClampedArray(1280) }
+            const pageHeight = 792 + (payload?.pageNumber ?? 1) * 3;
+            const result = type === 'open' ? { pageCount, capabilities: 'test' }
+                : type === 'render' ? { ...rasterSize(612, pageHeight, payload.width, payload.pixels), pageWidth: 612, pageHeight, pixels: new Uint8ClampedArray(4) }
                     : type === 'outline' ? [{ children: [{}, { pageNumber: 4, children: [] }] }]
                         : type === 'click' ? { actions: ['NextPage'], targetPage: payload.pageNumber + 1 } : 'pong';
-            queueMicrotask(() => this.onmessage?.({ data: { id, result } }));
+            const reply = () => this.onmessage?.({ data: { id, result } });
+            if (type === 'render' && holdRenders) heldRenders.push(reply);
+            else queueMicrotask(reply);
         }
         terminate() { }
     }
     const context = vm.createContext({
         document, window, Worker, URL, CSS: { supports: () => true },
-        ImageData: class { }, Date, Math, Map, Set, Promise,
+        ImageData: class { }, Date: { now: () => now }, Math, Map, Set, Promise,
         setInterval: callback => intervals.push(callback), clearInterval() { },
-        setTimeout: callback => timers.push(callback),
-        requestAnimationFrame: callback => frames.push(callback),
+        setTimeout: callback => { const id = ++sequence; timers.set(id, callback); return id; },
+        clearTimeout: id => timers.delete(id),
+        requestAnimationFrame: callback => { const id = ++sequence; frames.set(id, callback); return id; },
+        cancelAnimationFrame: id => frames.delete(id),
         IntersectionObserver: class {
             constructor(callback) { observed = callback; }
             observe() { }
@@ -99,16 +115,19 @@ async function viewer() {
     const module = new vm.SourceTextModule(await readFile(new URL('../assets/embedpdf_viewer/viewer.mjs', import.meta.url), 'utf8'), {
         context, initializeImportMeta: meta => { meta.url = new URL('../assets/embedpdf_viewer/viewer.mjs', import.meta.url).href; },
     });
-    await module.link(() => new vm.SyntheticModule(['limits', 'failure'], function () {
+    await module.link(() => new vm.SyntheticModule(['limits', 'failure', 'rasterSize'], function () {
         this.setExport('limits', limits);
         this.setExport('failure', failure);
+        this.setExport('rasterSize', rasterSize);
     }, { context }));
     await module.evaluate();
     const settle = async () => {
         for (let turn = 0; turn < 60; turn++) {
             await Promise.resolve();
-            frames.splice(0).forEach(callback => callback());
-            timers.splice(0).forEach(callback => callback());
+            const callbacks = [...frames.values(), ...timers.values()];
+            frames.clear();
+            timers.clear();
+            callbacks.forEach(callback => callback());
         }
     };
     const send = async (type, payload = {}) => {
@@ -119,10 +138,17 @@ async function viewer() {
         observed(root.children.map(page => ({ target: page, isIntersecting: numbers.includes(Number(page.dataset.page)) })));
         windowListeners.get('scroll')?.();
     };
-    await send('open', { config: { session: 'current', initialPage: 2, columns: 1, margin: 8 } });
+    await send('open', { config: { session: 'current', initialPage: 2, columns: 1, margin: 8, ...config } });
     events.length = 0;
     return {
         root, events, requests, scrolls, settle, send, observe, window,
+        holdRenders: () => { holdRenders = true; },
+        releaseRenders: async () => {
+            holdRenders = false;
+            heldRenders.splice(0).forEach(reply => reply());
+            await settle();
+        },
+        advance: milliseconds => { now += milliseconds; },
         tick: async () => { intervals.forEach(callback => callback()); await settle(); },
         visibility: async hidden => {
             document.hidden = hidden;
@@ -217,8 +243,148 @@ test('pinch follows a moving midpoint without changing the logical page', async 
         await view.settle();
         samePoint(view.point(6, clientX, clientY), point);
     }
-    view.root.listeners.get('touchend')({});
+    view.root.listeners.get('touchend')({ touches: [] });
     assert.deepEqual(view.pages(), [6]);
+});
+
+const pinchEvent = (distance, x = 540, y = 700) => ({
+    preventDefault() { },
+    touches: [
+        { clientX: x - distance / 2, clientY: y },
+        { clientX: x + distance / 2, clientY: y },
+    ],
+});
+
+for (const finish of ['touchend', 'touchcancel']) {
+    test(`pinch ${finish} keeps the last displayed geometry and canvas without a commit frame`, async () => {
+        const view = await viewer();
+        await view.send('goToPage', { pageNumber: 6 });
+        view.observe([6]);
+        await view.settle();
+        const page = view.root.children[5];
+        const canvas = page.querySelector('canvas');
+        const renders = view.requests.filter(request => request.type === 'render').length;
+        const point = view.point(6, 540, 700);
+        view.root.listeners.get('touchstart')(pinchEvent(200));
+        view.root.listeners.get('touchmove')(pinchEvent(300, 560, 710));
+        await view.settle();
+        assert.equal(view.root.style.width, '150%');
+        assert.ok(!view.root.style.transform, 'the full document must not become a scaled compositor layer');
+        samePoint(view.point(6, 560, 710), point);
+        assert.equal(view.requests.filter(request => request.type === 'render').length, renders);
+        const rect = page.getBoundingClientRect();
+        view.root.listeners.get(finish)({ touches: [] });
+        assert.deepEqual(page.getBoundingClientRect(), rect);
+        assert.equal(page.querySelector('canvas'), canvas);
+        await view.settle();
+        assert.deepEqual(page.getBoundingClientRect(), rect);
+        assert.equal(page.children.filter(child => child.tag === 'canvas').length, 1);
+        assert.notEqual(page.querySelector('canvas'), canvas, 'refresh only after the gesture');
+        assert.equal(canvas.width, 0, 'release the replaced backing store');
+        assert.deepEqual(view.pages(), [6]);
+    });
+}
+
+test('zoom refresh keeps the old raster until its replacement arrives and respects the pixel cap', async () => {
+    const view = await viewer();
+    view.observe([2]);
+    await view.settle();
+    const page = view.root.children[1];
+    const canvas = page.querySelector('canvas');
+    view.holdRenders();
+    await view.send('setZoom', { zoom: 2 });
+    assert.equal(page.querySelector('canvas'), canvas);
+    await view.releaseRenders();
+    const replacement = page.querySelector('canvas');
+    assert.notEqual(replacement, canvas);
+    assert.equal(page.children.filter(child => child.tag === 'canvas').length, 1);
+    assert.ok(replacement.width * replacement.height <= limits.rasterPixels);
+    const count = view.requests.filter(request => request.type === 'render').length;
+    await view.send('setZoom', { zoom: 4 });
+    assert.equal(view.requests.filter(request => request.type === 'render').length, count,
+        'do not rasterize again when the resolution is already pixel-capped');
+    assert.equal(view.events.filter(event => event.type === 'error').length, 0);
+});
+
+test('a relayout keeps painted pages until new rasters are ready', async () => {
+    const view = await viewer();
+    view.observe([2]);
+    await view.settle();
+    const canvas = view.root.children[1].querySelector('canvas');
+    view.holdRenders();
+    await view.send('setLayout', { columns: 3 });
+    assert.equal(view.root.children[1].querySelector('canvas'), canvas);
+    await view.releaseRenders();
+    assert.notEqual(view.root.children[1].querySelector('canvas'), canvas);
+    assert.equal(canvas.width, 0);
+});
+
+test('repeated navigation and zoom stay within the raster cache budget', async () => {
+    const view = await viewer();
+    for (let number = 3; number <= 45; number++) {
+        view.observe([number]);
+        await view.send('goToPage', { pageNumber: number });
+        await view.send('setZoom', { zoom: number % 2 ? 2 : 1 });
+        const canvases = view.root.children.flatMap(page => page.children.filter(child => child.tag === 'canvas'));
+        assert.ok(canvases.length <= limits.cachedPages);
+        assert.ok(canvases.reduce((sum, canvas) => sum + canvas.width * canvas.height, 0) <= limits.cachedPixels);
+        assert.ok(view.root.children[number - 1].querySelector('canvas'));
+    }
+    assert.equal(view.events.filter(event => event.type === 'error').length, 0);
+});
+
+test('overlapping navigation cannot overcommit the cache when worker results arrive', async () => {
+    const view = await viewer();
+    view.holdRenders();
+    for (let number = 3; number <= 12; number++) {
+        await view.send('goToPage', { pageNumber: number });
+    }
+    await view.releaseRenders();
+    await view.settle();
+    const canvases = view.root.children.flatMap(page => page.children.filter(child => child.tag === 'canvas'));
+    assert.ok(canvases.reduce((sum, canvas) => sum + canvas.width * canvas.height, 0) <= limits.cachedPixels);
+    assert.ok(view.root.children[11].querySelector('canvas'));
+    assert.equal(view.events.filter(event => event.type === 'error').length, 0);
+});
+
+test('large-document raster limits also apply to zoom replacements', async () => {
+    const view = await viewer({ config: {
+        largeDocumentPageCount: 100, largeDocumentMaxCanvasPixels: 4096,
+    } });
+    view.observe([2]);
+    await view.send('setZoom', { zoom: 4 });
+    const canvas = view.root.children[1].querySelector('canvas');
+    assert.ok(canvas.width * canvas.height <= 4096);
+    assert.ok(view.requests.filter(request => request.type === 'render').every(request => request.payload.pixels === 4096));
+});
+
+test('zoom changes during an in-flight render never install the obsolete resolution', async () => {
+    const view = await viewer();
+    view.observe([2]);
+    await view.settle();
+    const page = view.root.children[1];
+    const canvas = page.querySelector('canvas');
+    view.holdRenders();
+    await view.send('setZoom', { zoom: 2 });
+    await view.send('setZoom', { zoom: 1 });
+    await view.releaseRenders();
+    assert.equal(page.querySelector('canvas'), canvas);
+    assert.equal(view.events.filter(event => event.type === 'error').length, 0);
+});
+
+test('an unresponsive render still produces fatal fallback while inactive time is excluded', async () => {
+    const view = await viewer();
+    view.holdRenders();
+    view.observe([6]);
+    await view.settle();
+    await view.send('setActive', { active: false });
+    view.advance(60000);
+    await view.tick();
+    assert.equal(view.events.filter(event => event.type === 'error').length, 0);
+    await view.send('setActive', { active: true });
+    view.advance(21000);
+    await view.tick();
+    assert.ok(view.events.some(event => event.name === 'embedpdf-fatal-render-timeout'));
 });
 
 test('a named action emits exactly one navigation; manual scrolling releases the anchor', async () => {

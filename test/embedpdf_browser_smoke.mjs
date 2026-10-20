@@ -28,6 +28,45 @@ async function nonblank(number) {
         return dark > 100;
     }, number);
 }
+async function verifyPinch() {
+    return page.evaluate(async () => {
+        const root = document.getElementById('pages');
+        const page = root.children[5];
+        const x = innerWidth / 2, y = innerHeight / 2;
+        const frame = () => new Promise(resolve => requestAnimationFrame(resolve));
+        const touch = (type, distance) => root.dispatchEvent(new TouchEvent(type, {
+            bubbles: true, cancelable: true,
+            touches: distance === null ? [] : [
+                new Touch({ identifier: 1, target: root, clientX: x - distance / 2, clientY: y }),
+                new Touch({ identifier: 2, target: root, clientX: x + distance / 2, clientY: y }),
+            ],
+        }));
+        let maximumEndJump = 0, maximumAnchorDrift = 0;
+        for (let repeat = 0; repeat < 12; repeat++) {
+            const initial = page.getBoundingClientRect();
+            const anchor = { x: (x - initial.left) / initial.width, y: (y - initial.top) / initial.height };
+            touch('touchstart', 100);
+            touch('touchmove', repeat % 2 === 0 ? 150 : 100 / 1.5);
+            await frame();
+            await frame();
+            const before = page.getBoundingClientRect();
+            maximumAnchorDrift = Math.max(maximumAnchorDrift,
+                Math.abs(before.left + anchor.x * before.width - x),
+                Math.abs(before.top + anchor.y * before.height - y));
+            const canvas = page.querySelector('canvas');
+            touch(repeat % 3 === 0 ? 'touchcancel' : 'touchend', null);
+            await frame();
+            const after = page.getBoundingClientRect();
+            maximumEndJump = Math.max(maximumEndJump, ...['left', 'top', 'width', 'height']
+                .map(key => Math.abs(before[key] - after[key])));
+            if (!canvas || page.querySelector('canvas') !== canvas) throw new Error('Canvas cleared at pinch end');
+            if (root.style.transform) throw new Error('Full-document transform during pinch');
+            await new Promise(resolve => setTimeout(resolve, 300));
+            if (page.querySelectorAll('canvas').length !== 1) throw new Error('Missing or duplicated pinch raster');
+        }
+        return { maximumEndJump, maximumAnchorDrift };
+    });
+}
 try {
     await mkdir(evidence, { recursive: true });
     for (const viewport of [{ width: 1200, height: 800 }, { width: 390, height: 844 }]) {
@@ -106,6 +145,12 @@ try {
         stage('zoom');
         assert.equal(await page.evaluate(() => document.getElementById('pages').style.width), '200%');
         await command('setZoom', { zoom: 1 });
+        await command('goToPage', { pageNumber: 6 });
+        await nonblank(6);
+        const pinch = await verifyPinch();
+        assert.ok(pinch.maximumEndJump <= 0.5, `Pinch-end jump: ${pinch.maximumEndJump}px`);
+        assert.ok(pinch.maximumAnchorDrift <= 1, `Pinch anchor drift: ${pinch.maximumAnchorDrift}px`);
+        stage('anchored-pinch');
         await command('goToPage', { pageNumber: 2 });
         await nonblank(2);
         await page.evaluate(() => window.pdfjsBridge.receive(JSON.stringify({ v: 1, type: 'goToPage', session: 'retired-session', pageNumber: 9 })));

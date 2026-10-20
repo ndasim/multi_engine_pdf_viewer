@@ -141,7 +141,7 @@ class _EmbedPdfEngineViewState extends State<EmbedPdfEngineView> with WidgetsBin
       _web = web;
       await web.setJavaScriptMode(JavaScriptMode.unrestricted);
       await web.setBackgroundColor(widget.params.backgroundColor);
-      await web.enableZoom(true);
+      await web.enableZoom(false);
       await web.addJavaScriptChannel(
         pdfJsBridgeChannelName,
         onMessageReceived: (message) {
@@ -165,6 +165,11 @@ class _EmbedPdfEngineViewState extends State<EmbedPdfEngineView> with WidgetsBin
           onWebResourceError: (error) {
             if (!_current(generation)) return;
             if (error.errorType == WebResourceErrorType.webContentProcessTerminated) {
+              debugPrint(
+                '[EMBEDPDF-WEBVIEW] content terminated '
+                'code=${error.errorCode} type=${error.errorType} '
+                'description=${error.description} url=${error.url}',
+              );
               _report(
                 const PdfViewerException(
                   'embedpdf-fatal-content-terminated',
