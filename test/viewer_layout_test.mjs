@@ -247,6 +247,51 @@ before(async () => {
 });
 after(async () => { await browser?.close(); });
 
+for (const tier of ["current", "compat", "legacy"]) {
+    test(`${tier}: page spinner follows rendering classes without image assets`,
+        { skip: !playwrightModule && "Set PDFJS_PLAYWRIGHT_MODULE to test page loading styles" }, async () => {
+            const page = await browser.newPage();
+            try {
+                await page.setContent('<div class="pdfViewer"><div class="page"></div></div>');
+                await page.addStyleTag({
+                    content: readFileSync(new URL(`pdfjs/${tier}/web/pdf_viewer.css`, assets), "utf8")
+                });
+                await page.addStyleTag({
+                    content: readFileSync(new URL("viewer/viewer.css", assets), "utf8")
+                });
+                const indicator = (classes) => page.evaluate((classes) => {
+                    const element = document.querySelector(".page");
+                    element.className = `page ${classes}`;
+                    const style = getComputedStyle(element, "::after");
+                    return {
+                        display: style.display, animation: style.animationName,
+                        background: style.backgroundImage, pointerEvents: style.pointerEvents,
+                        width: style.width, border: style.borderTopStyle
+                    };
+                }, classes);
+                assert.equal((await indicator("")).display, "none");
+                for (const classes of ["loadingIcon loading", "loadingIcon"]) {
+                    const style = await indicator(classes);
+                    assert.equal(style.display, "block");
+                    assert.equal(style.animation, "pdfjs-page-loading");
+                    assert.equal(style.background, "none");
+                    assert.equal(style.pointerEvents, "none");
+                    assert.equal(style.width, "32px");
+                    assert.equal(style.border, "solid");
+                }
+                assert.equal((await indicator("")).display, "none");
+                assert.equal((await indicator("loadingIcon loading")).display, "block",
+                    "Rendering an evicted page must show the indicator again");
+                await page.emulateMedia({ reducedMotion: "reduce" });
+                const reduced = await indicator("loadingIcon loading");
+                assert.equal(reduced.display, "block");
+                assert.equal(reduced.animation, "none");
+            } finally {
+                await page.close();
+            }
+        });
+}
+
 function fixture() {
     const objects = [];
     const add = (value) => { objects.push(value); return objects.length; };

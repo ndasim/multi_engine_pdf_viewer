@@ -104,6 +104,11 @@ navigation is available, not that every page is loaded. `onFirstPageRendered`
 fires once per session. `onDiagnostic` carries engine/bundle resolution metadata.
 Downloading, document authorization and persistence remain host responsibilities.
 
+PDF.js shows the Flutter `loadingBuilder` (or a default spinner) until page layout
+is ready, then removes it so only per-page spinners indicate rendering.
+These also appear after navigation or when an evicted page is rendered again.
+The page indicators do not block links or scrolling and respect reduced motion.
+
 ## Architecture
 
 `src/domain` defines source-independent entities and the internal session contract.

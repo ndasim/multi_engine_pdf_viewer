@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart' show CircularProgressIndicator;
 import 'package:flutter/services.dart';
 import 'package:multi_engine_pdf_viewer/multi_engine_pdf_viewer.dart';
 import 'package:multi_engine_pdf_viewer/src/data/embedpdf/embedpdf_session.dart';
@@ -130,6 +131,7 @@ class _Host {
     PdfViewerLayout layout = PdfViewerLayout.vertical,
     int initialPage = 1,
     PdfViewerController? externalController,
+    WidgetBuilder? loadingBuilder,
   }) => Directionality(
     textDirection: TextDirection.ltr,
     child: PdfViewer.file(
@@ -139,6 +141,7 @@ class _Host {
       params: PdfViewerParams(
         engine: engine,
         layout: layout,
+        loadingBuilder: loadingBuilder,
         onViewerReady: ready.add,
         onFirstPageRendered: rendered.add,
         onPageChanged: pages.add,
@@ -211,6 +214,50 @@ void main() {
     EmbedPdfEngineView.debugInjectFatal = previousFatalHook;
     await directory.delete(recursive: true);
   });
+
+  for (final customLoading in [false, true]) {
+    testWidgets('PDF.js hands off loading at layout ready, custom=$customLoading', (tester) async {
+      const loadingKey = ValueKey('host-loading');
+      final loading = customLoading
+          ? find.byKey(loadingKey)
+          : find.byType(CircularProgressIndicator);
+      Widget viewer(String path) => host.viewer(
+        path,
+        engine: PdfViewerEngine.pdfJs,
+        loadingBuilder: customLoading ? (_) => const SizedBox(key: loadingKey) : null,
+      );
+
+      await tester.pumpWidget(viewer(file));
+      expect(loading, findsOneWidget);
+      final web = await _web(tester, platform, 0);
+      expect(loading, findsOneWidget);
+      expect(host.ready, isEmpty);
+
+      web.message('ready', {'pageCount': 20, 'pageNumber': 1});
+      await tester.pump();
+      expect(loading, findsNothing);
+      expect(host.ready, hasLength(1));
+      expect(host.rendered, isEmpty);
+
+      web.message('firstPageRendered', {'pageNumber': 1});
+      web.message('pageChanged', {'pageNumber': 2});
+      await tester.pump();
+      expect(loading, findsNothing);
+      expect(host.rendered, [1]);
+      expect(host.pages, [2]);
+
+      final nextFile = '${directory.path}/replacement.pdf';
+      await tester.runAsync(() => File(file).copy(nextFile));
+      await tester.pumpWidget(viewer(nextFile));
+      expect(loading, findsOneWidget);
+      final replacement = await _web(tester, platform, 1);
+      replacement.message('ready', {'pageCount': 10, 'pageNumber': 1});
+      await tester.pump();
+      expect(loading, findsNothing);
+      expect(host.errors, isEmpty);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
 
   testWidgets('pre-ready injected fatal falls back once without reporting a host error', (
     tester,

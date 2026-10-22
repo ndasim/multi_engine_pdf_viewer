@@ -39,7 +39,30 @@ body {
 }
 
 .pdfViewer .page.loadingIcon::after {
-    display: none;
+    display: block;
+    top: 50%;
+    left: 50%;
+    width: 32px;
+    height: 32px;
+    margin: -19px 0 0 -19px;
+    border: 3px solid rgba(96, 125, 139, 0.25);
+    border-top-color: rgb(96, 125, 139);
+    border-radius: 50%;
+    background: none;
+    pointer-events: none;
+    animation: pdfjs-page-loading 0.8s linear infinite;
+}
+
+@keyframes pdfjs-page-loading {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .pdfViewer .page.loadingIcon::after {
+        animation: none;
+    }
 }
 
 /* Grid: rows of pages starting at the left margin, vertically centered per row. */

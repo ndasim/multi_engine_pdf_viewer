@@ -84,6 +84,7 @@ class PdfViewerParams {
   final List<PdfFontRegistration> fonts;
 
   /// Shown until the first page can be displayed.
+  /// PDF.js hands off to per-page spinners when page layout is ready.
   final WidgetBuilder? loadingBuilder;
 
   /// Shown when opening or rendering fails and no fallback is available.

@@ -67,7 +67,8 @@ class PdfJsViewerParams {
   final int largeDocumentPageCount;
   final int largeDocumentMaxCanvasPixels;
 
-  /// Shown until the first page layout is ready.
+  /// Shown until page layout is ready, then per-page spinners indicate rendering.
+  /// Defaults to a centered adaptive spinner.
   final WidgetBuilder? loadingBuilder;
   final void Function(PdfJsViewerController controller)? onViewerReady;
 

@@ -4,7 +4,7 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:multi_engine_pdf_viewer/src/data/pdfjs/pdfjs_bridge_message.dart';
 import 'package:multi_engine_pdf_viewer/src/data/pdfjs/pdfjs_bundle.dart';
 import 'package:multi_engine_pdf_viewer/src/data/pdfjs/pdfjs_local_server.dart';
@@ -537,7 +537,9 @@ class _PdfJsViewerState extends State<PdfJsViewer> with WidgetsBindingObserver {
               Factory<OneSequenceGestureRecognizer>(EagerGestureRecognizer.new),
             },
           ),
-        if (!_isReady) widget.params.loadingBuilder?.call(context) ?? const SizedBox.shrink(),
+        if (!_isReady)
+          widget.params.loadingBuilder?.call(context) ??
+              const Center(child: CircularProgressIndicator.adaptive()),
       ],
     );
   }
