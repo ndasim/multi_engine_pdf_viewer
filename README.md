@@ -1,7 +1,7 @@
 # multi_engine_pdf_viewer
 
-An engine-independent local-file PDF viewer for Android and iOS, with PDF.js,
-EmbedPDF and pdfrx/PDFium adapters behind one controller. Toolbars, localization and
+An engine-independent local-file PDF viewer for Android and iOS, with PDFKit,
+PDF.js, EmbedPDF and pdfrx/PDFium adapters behind one controller. Toolbars, localization and
 application state remain in the host. Requires Dart 3.10+ and Flutter 3.41+.
 The combined package does not support web or desktop.
 
@@ -9,7 +9,7 @@ The combined package does not support web or desktop.
 
 ```yaml
 dependencies:
-  multi_engine_pdf_viewer: ^0.1.6
+  multi_engine_pdf_viewer: ^0.2.0
 ```
 
 Android must allow cleartext HTTP for `127.0.0.1` only. See [Platform setup](#platform-setup). The runnable example in [`example/`](example/) already includes that configuration.
@@ -19,18 +19,25 @@ Android must allow cleartext HTTP for `127.0.0.1` only. See [Platform setup](#pl
 - Vertical fit-width and grid layout (`PdfViewerLayout.grid(columns: 3)`), pinch and double-tap zoom.
 - Text search, result navigation and counters (`PdfTextSearcher`).
 - Engine-neutral outline bookmarks (`PdfViewerController.outline`).
-- Internal links and NextPage/PrevPage PDF push-button named actions in all three adapters.
+- Internal links and NextPage/PrevPage PDF push-button named actions in all four adapters.
 - Allowlisted external links forwarded to the host, never opened by the package.
 - No stock PDF.js toolbar; all UI stays in Flutter.
 
 ## Engine Selection And Benefits
 
-PDF.js remains the default. EmbedPDF is opt-in, not a fleet-certified replacement.
+PDF.js is the package default on both iOS and Android. The host application owns
+platform-specific defaults and feature flags; select PDFKit explicitly for iOS.
+An unsupported mobile engine choice (PDFKit on Android) logs a warning and selects
+PDF.js before creating any incompatible platform view. The
+`unsupported-platform-fallback` diagnostic has `engine: pdfJs`, `attempt: 1` and
+`failure: engine-unsupported-platform`. Page, layout and callbacks are preserved.
+EmbedPDF is opt-in, not a fleet-certified replacement.
 All engines share page navigation, outline, search and grid contracts, but their
 render/ready hooks and resource ownership differ.
 
 | Engine | Main benefit | Cost / qualification boundary |
 | --- | --- | --- |
+| PDFKit (iOS only) | Apple-native tiled rendering and gestures, no WebView, loopback server or PDFium initialization | OS-dependent rendering/fonts; simulator evidence is not physical-device or memory-pressure certification |
 | PDF.js | Mature JavaScript rendering, tier downgrade, standard fonts and annotation handling without app-owned native FFI | WebView/renderer memory; legacy security mitigations are not an upstream patch |
 | EmbedPDF 2.15.1 | Offline PDFium-WASM in a dedicated worker; on the measured Samsung, faster visible content and lower end PSS than PDF.js | WASM/CSP/module-worker requirements; app-owned raw form callback adapter; minimum-runtime and real renderer-crash qualification remain open |
 | pdfrx 2.4.x / PDFium | Native progressive loading; lowest measured visible-content latency and end PSS on the same Samsung | Native FFI/callback lifetime and process-global font ownership; physical search/page-state disagreement remains open |
@@ -61,7 +68,7 @@ Update with `tool/vendor_pdfjs_bundles.sh [legacy-version] [current-version]` an
 
 ## Example
 
-The runnable example is in [`example/`](example/). It opens a PDF from the system file picker on Android and iOS and can switch among PDF.js, EmbedPDF and pdfrx.
+The runnable example is in [`example/`](example/). It opens a PDF from the system file picker on Android and iOS and can switch among all four engines. PDFKit appears only on iOS.
 
 `tool/performance_harness/` is a development harness and is excluded from the published package. PDF fixtures, archives and build products are not distributed.
 
@@ -77,7 +84,7 @@ PdfViewer.file(
   controller: controller,
   initialPageNumber: 1,
   params: PdfViewerParams(
-    engine: PdfViewerEngine.embedPdf, // Opt-in; the default is pdfJs. Also: pdfrx.
+    engine: PdfViewerEngine.embedPdf, // Opt-in. Omit for PDF.js on both platforms.
     layout: PdfViewerLayout.vertical,
     loadingBuilder: (_) => const Center(child: CircularProgressIndicator()),
     onViewerReady: (controller) {},
@@ -118,7 +125,7 @@ services, service locator or private package dependencies. Import only
 `multi_engine_pdf_viewer.dart` in production; the separate `multi_engine_pdf_viewer_debug.dart`
 entry point is profiling-only.
 
-All three adapters implement `PdfEngineSession`. The viewer owner selects and
+All four adapters implement `PdfEngineSession`. The viewer owner selects and
 retires sessions; generation guards discard callbacks from replaced sessions.
 EmbedPDF owns its WebView/server/worker resources, while the serialized worker
 owns the raw PDFium document and short-lived form environments.
@@ -178,7 +185,49 @@ tarball integrity, artifact hashes, sizes and notices are in
 [assets/embedpdf/VERSION](assets/embedpdf/VERSION). Review artifacts, licenses,
 worker CSP and regression/device evidence before changing pins.
 
-## Native Engine
+## iOS PDFKit Engine
+
+Select `PdfViewerEngine.pdfKit` on iOS. The package registers its
+own platform-view plugin; no application `AppDelegate`, Runner source or Xcode
+project edits are needed. Explicit selection on Android logs the unsupported
+selection and falls back to PDF.js with a diagnostic instead of failing.
+
+The adapter is derived from the application's `feature/pdf_native_ios` branch,
+with package-scoped, per-view channels and no application services or assets.
+It supports fit-width continuous vertical pages, pinch/double-tap zoom, configurable
+grid columns, page taps, one-based/clamped navigation, nested outline destinations,
+case-insensitive progressive search, highlighting and next/previous result wrapping.
+Searching or selecting an outline destination exits grid mode and synchronizes
+`onLayoutChanged`. Explicit destinations remain the selected page until user
+scrolling, including short last pages that PDFKit otherwise reports as the preceding
+taller page. Width changes refit; height changes alone preserve zoom.
+
+Opening, search and outline parsing use background work. Search uses a separate
+document and generation IDs; replaced/cleared searches cannot publish stale results.
+The displayed document's outline is never parsed on the UI thread.
+`onViewerReady` follows the first fitted layout; `onFirstPageRendered` comes from
+native page drawing (or the first visible grid thumbnail), once per session.
+Loading stays visible until this drawing callback. Disposing a session removes
+channel handlers, notifications, search selections, grid work and document references.
+
+Annotation actions are extracted before display and removed from PDFKit's default
+action handling. Internal destinations and NextPage/PrevPage are handled by the
+adapter, including overlapping targetless annotations. Only `http`, `https`,
+`mailto` and `tel` links reach `onExternalLinkTap`; the package never opens them.
+File URLs, remote-document actions and scripts are not executed.
+Errors use fixed codes and redact document paths. Missing-plugin/transport/open
+timeouts fall back once to pdfrx, retaining page and layout and reporting
+`source: 'pdfkit-fallback'`. Invalid/password-protected documents are terminal and
+reach `onError`/`errorBuilder`, not a silent engine switch.
+
+PDFKit owns native tiled-rendering memory and system/embedded fonts.
+`PdfFontRegistration`, WebView canvas flags and PDF.js bundle/cache settings do not
+apply. Pixel budgets apply to grid thumbnails, not to PDFKit's native tiles;
+the thumbnail cache has a 32 MiB cost limit, not a hard process-memory ceiling.
+Background, page spacing and search colors are configurable. PDFKit controls the
+native page-shadow color; a transparent `pageShadowColor` disables its shadow.
+
+## Native PDFium Engine
 
 pdfrx uses progressive PDFium loading, conservative caches for large documents and
 search highlighting. Its named-action FFI supports NextPage/PrevPage only. The
@@ -228,6 +277,9 @@ and reference it from the `<application>` element with `android:networkSecurityC
 
 iOS: App Transport Security exempts loopback IP literals on iOS 10 and later, so no `Info.plist` change should be needed. If the WebView reports an ATS block on your minimum iOS version, add `NSAllowsLocalNetworking` (not `NSAllowsArbitraryLoads`) to `NSAppTransportSecurity`.
 
+PDFKit uses local files directly and needs no ATS exceptions. Its plugin supports
+iOS 13+, subject to the host's Flutter SDK and other plugins' deployment floors.
+
 ## Verification
 
 ```sh
@@ -237,8 +289,35 @@ flutter test test
 node --test test/viewer_outline_test.mjs
 node --experimental-vm-modules --test test/viewer_layout_test.mjs test/embedpdf_limits_test.mjs test/embedpdf_viewer_navigation_test.mjs
 cd example && flutter pub get && dart analyze && flutter test
+flutter test integration_test/pdfkit_test.dart -d <ios-simulator-id>
 cd .. && flutter pub publish --dry-run
 ```
+
+The PDFKit integration fixture is generated in memory: real searchable text,
+mixed page sizes, nested/unresolved outlines, internal and external links, overlapping
+annotations and NextPage/PrevPage buttons. The ordinary integration test verifies
+render/readiness, navigation, exact search counts, cancellation, zero results,
+configurable grid/reopen/cleanup and redacted missing-file errors. Native annotation
+taps and zoom require real HID input; `example/integration_test/pdfkit_hid_test.dart`
+is an opt-in bridge for that check, not a `tester.tapAt` substitute.
+
+When a newer local Xcode rejects older simulator deployment targets, run validation
+with `FLUTTER_XCODE_IPHONEOS_DEPLOYMENT_TARGET=15.0` (or that SDK's supported floor).
+This process-scoped build override does not change the package's runtime minimum.
+
+### PDFKit simulator evidence (2026-10-22)
+
+| Target | Verified |
+| --- | --- |
+| iOS 16.2, iPhone 14 simulator | Generated-fixture controller/search/outline/grid/error contracts; open, paint, full background search scan, last-page navigation and reopen of a 21,417,410-byte / 189-page local PDF |
+| iOS 18.6, iPhone 16 simulator | The same contracts; a 99,881,144-byte / 82-page local PDF; actual HID NextPage/PrevPage and overlapping internal-link taps with exactly one page callback, host-only HTTPS callback, blocked file URL, double-tap/pinch zoom and grid-page selection |
+
+The focused Dart session/controller/fallback suite passes 45 tests, and the example
+widget test passes. The real-HID fixture and driver are repeatable from the example
+instructions. Native touch injection did not work on the installed Xcode's iOS 16.2
+HID transport, so no iOS 16.2 physical-touch acceptance is claimed.
+These are simulator results, not physical-device, iOS 13 minimum-runtime,
+memory-pressure/OOM or arbitrary-PDF security certification.
 
 ## Compatibility Evidence
 

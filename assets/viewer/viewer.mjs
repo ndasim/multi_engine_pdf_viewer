@@ -10,9 +10,9 @@
 // (Chrome 80 / Safari 13.1); the runtime APIs it uses above that line are
 // core-js polyfilled inside the bundle, so they do not raise it.
 //
-// This file is NOT polyfilled, so both syntax and runtime APIs count here. The
-// highest feature it currently uses is `??=` on line ~499, exactly at the
-// floor. test/viewer_asset_syntax_test.dart holds the line; that is why there
+// This file is NOT polyfilled, so both syntax and runtime APIs count here.
+// test/viewer_asset_syntax_test.dart holds this upper bound even if a refactor
+// removes a feature that once required the floor; that is why there
 // is no transpile step and no second host page.
 //
 // Chrome 66 — Android 9's stock System WebView — is far below this floor and

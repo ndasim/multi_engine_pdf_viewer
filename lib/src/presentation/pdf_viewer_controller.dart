@@ -92,7 +92,7 @@ class PdfViewerController extends ChangeNotifier {
   }
 }
 
-/// Search counters and commands for either engine.
+/// Search counters and commands for any engine.
 class PdfTextSearcher extends ChangeNotifier {
   /// Listens to [controller]. Dispose this before the controller.
   PdfTextSearcher(this._controller) {

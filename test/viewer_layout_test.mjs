@@ -343,6 +343,9 @@ async function snapshot(page) {
             pageNumber: pdfViewer.currentPageNumber, top: rect.top, height: rect.height,
             left: rect.left, width: rect.width, fitScale: layoutRegression.state.fitScale,
             scale: pdfViewer.currentScale,
+            viewportHeight: pdfViewer.container.clientHeight,
+            scrollTop: pdfViewer.container.scrollTop,
+            maxScrollTop: Math.max(0, pdfViewer.container.scrollHeight - pdfViewer.container.clientHeight),
             callbacks: events.filter((event) => event.type === "pageChanged").map((event) => event.pageNumber)
         };
     });
@@ -350,9 +353,11 @@ async function snapshot(page) {
 
 function sameAnchor(actual, expected) {
     assert.equal(actual.pageNumber, 7, "The actual PDFViewer page must stay selected");
-    assert.ok(Math.abs(actual.top / actual.height - expected.top / expected.height) < 0.015,
+    const targetScroll = actual.scrollTop + actual.top - expected.top / expected.height * actual.height;
+    const reachableScroll = Math.min(Math.max(targetScroll, 0), actual.maxScrollTop);
+    assert.ok(Math.abs(actual.scrollTop - reachableScroll) / actual.height < 0.015,
         `The page-7 document point moved: ${JSON.stringify({ actual, expected })}`);
-    assert.ok(actual.top < actual.height && actual.top + actual.height > 0, "Page 7 must remain visible");
+    assert.ok(actual.top < actual.viewportHeight && actual.top + actual.height > 0, "Page 7 must remain visible");
     assert.ok(actual.callbacks.every((number) => number === 7), "Do not hide transient controller drift");
 }
 
@@ -441,7 +446,11 @@ for (const tier of ["current", "compat", "legacy"]) {
                     assert.equal((await snapshot(page)).pageNumber, 7);
                     assert.deepEqual((await snapshot(page)).callbacks, [8, 7], "Named actions must use the actual page and turn exactly once");
                     await page.mouse.move(viewport.width / 2, viewport.height / 2);
-                    await page.mouse.wheel(0, 800);
+                    const distance = await page.evaluate(() => {
+                        const { pdfViewer } = layoutRegression.state;
+                        return pdfViewer.getPageView(6).div.getBoundingClientRect().bottom + pdfViewer.container.clientHeight;
+                    });
+                    await page.mouse.wheel(0, distance);
                     await page.waitForFunction(() => layoutRegression.state.pdfViewer.currentPageNumber > 7);
                     assert.equal(await page.evaluate(() => layoutRegression.state.pdfViewer.viewportAnchor == null), true);
                     await page.evaluate(() => pdfjsBridge.receive(JSON.stringify({ v: 1, type: "goToPage", pageNumber: 13 })));

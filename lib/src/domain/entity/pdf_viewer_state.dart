@@ -1,6 +1,6 @@
 /// Rendering engines bundled with this package.
 enum PdfViewerEngine {
-  /// PDF.js in a WebView. This is the default.
+  /// PDF.js in a WebView. The default on Android and iOS.
   pdfJs,
 
   /// Native PDFium through pdfrx.
@@ -8,6 +8,9 @@ enum PdfViewerEngine {
 
   /// Offline PDFium compiled to WASM. Opt in; a fatal failure falls back to pdfrx once.
   embedPdf,
+
+  /// Apple's PDFKit. iOS only; host applications choose when to enable it.
+  pdfKit,
 }
 
 /// Page arrangement independent of a rendering engine.

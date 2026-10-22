@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/widgets.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show CircularProgressIndicator;
 import 'package:flutter/services.dart';
 import 'package:multi_engine_pdf_viewer/multi_engine_pdf_viewer.dart';
@@ -213,6 +214,84 @@ void main() {
     PdfViewerParams.debugEngineOverride = previousOverride;
     EmbedPdfEngineView.debugInjectFatal = previousFatalHook;
     await directory.delete(recursive: true);
+  });
+
+  for (final debugOverride in [false, true]) {
+    testWidgets('unsupported PDFKit falls back to PDF.js with one log, override=$debugOverride', (
+      tester,
+    ) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      final previousPrint = debugPrint;
+      final logs = <String>[];
+      debugPrint = (message, {wrapWidth}) {
+        if (message != null) logs.add(message);
+      };
+      try {
+        if (debugOverride) PdfViewerParams.debugEngineOverride = PdfViewerEngine.pdfKit;
+        Widget viewer() => host.viewer(
+          file,
+          engine: debugOverride ? PdfViewerEngine.pdfJs : PdfViewerEngine.pdfKit,
+          initialPage: 4,
+          layout: const PdfViewerLayout.grid(columns: 4),
+        );
+        await tester.pumpWidget(viewer());
+        final web = await _web(tester, platform, 0);
+        expect(find.byType(PdfJsEngineView), findsOneWidget);
+        expect(find.byType(PdfrxEngineView), findsNothing);
+        expect(find.byType(UiKitView), findsNothing);
+        final fallback = host.diagnostics.single;
+        expect(fallback.engine, PdfViewerEngine.pdfJs);
+        expect(fallback.source, 'unsupported-platform-fallback');
+        expect(fallback.failure, 'engine-unsupported-platform');
+        expect(fallback.attempt, 1);
+        final view = tester.widget<PdfJsEngineView>(find.byType(PdfJsEngineView));
+        expect(view.initialPageNumber, 4);
+        expect(view.layout.columns, 4);
+        web.message('ready', {'pageCount': 20, 'pageNumber': 4});
+        web.message('firstPageRendered', {'pageNumber': 4});
+        web.message('pageChanged', {'pageNumber': 5});
+        await tester.pump();
+        expect(host.controller.pageNumber, 5);
+        expect(host.ready, [host.controller]);
+        expect(host.rendered, [4]);
+        expect(host.errors, isEmpty);
+        await tester.pumpWidget(viewer());
+        await tester.pump();
+        expect(logs.where((line) => line.contains('falling back to pdfJs')), hasLength(1));
+        expect(logs.single, contains('pdfKit is unsupported on android'));
+        expect(logs.single, isNot(contains(file)));
+        expect(host.diagnostics, hasLength(1));
+        await tester.pumpWidget(const SizedBox.shrink());
+      } finally {
+        debugPrint = previousPrint;
+        debugDefaultTargetPlatformOverride = null;
+      }
+    });
+  }
+
+  testWidgets('explicit supported engine after incompatibility retires fallback state', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    try {
+      await tester.pumpWidget(host.viewer(file, engine: PdfViewerEngine.pdfKit));
+      final fallback = await _web(tester, platform, 0);
+      fallback.message('ready', {'pageCount': 20, 'pageNumber': 4});
+      await tester.pump();
+      expect(host.controller.pageNumber, 4);
+      await tester.pumpWidget(host.viewer(file, engine: PdfViewerEngine.embedPdf));
+      final embed = await _web(tester, platform, 1);
+      expect(find.byType(EmbedPdfEngineView), findsOneWidget);
+      expect(host.controller.isReady, isFalse);
+      fallback.message('pageChanged', {'pageNumber': 9});
+      embed.message('ready', {'pageCount': 30, 'pageNumber': 1});
+      await tester.pump();
+      expect(host.controller.pageNumber, 1);
+      expect(host.errors, isEmpty);
+      await tester.pumpWidget(const SizedBox.shrink());
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
   });
 
   for (final customLoading in [false, true]) {

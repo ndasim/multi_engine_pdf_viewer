@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.2.0
+
+- Add an automatically registered iOS PDFKit engine, adapted from `feature/pdf_native_ios`, behind the existing controller/session contract.
+- Keep PDF.js as the package default on iOS and Android; host applications own the PDFKit platform default and disable flags.
+- Log unsupported mobile engine selections and fall back to PDF.js before creating the adapter, retaining page/layout/callbacks and emitting a diagnostic.
+- Support native vertical/grid rendering, pinch/double-tap zoom, page callbacks, internal/named links, outline destinations and cancellable progressive search.
+- Forward only allowlisted external links to the host, redact native errors, and fall back once to pdfrx for PDFKit plugin/transport failures.
+- Add native-session/facade regression tests, generated-fixture iOS integration coverage and an opt-in real-HID simulator harness.
+- Show per-page PDF.js loading indicators and remove the startup overlay once page layout is ready.
+- Keep the JavaScript compatibility guard as an upper bound without requiring unused logical-assignment syntax.
+
 ## 0.1.8
 
 - Keep the same anchored page geometry throughout EmbedPDF pinch, touch end and cancellation instead of transforming the full document and relaying it out on release.

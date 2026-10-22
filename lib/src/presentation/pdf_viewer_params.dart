@@ -9,7 +9,7 @@ class PdfViewerParams {
   /// Profiling override. Production code should pass [engine] instead.
   static PdfViewerEngine? debugEngineOverride;
 
-  /// Options for one viewer. [engine] defaults to PDF.js.
+  /// Options for one viewer. Host applications own platform-specific defaults.
   const PdfViewerParams({
     this.engine = PdfViewerEngine.pdfJs,
     this.layout = PdfViewerLayout.vertical,
@@ -40,7 +40,8 @@ class PdfViewerParams {
        assert(largeDocumentPageCount > 0),
        assert(largeDocumentMaxCanvasPixels > 0);
 
-  /// Rendering engine. PDF.js is the default.
+  /// Requested engine. Defaults to PDF.js on both Android and iOS.
+  /// Unsupported selections fall back to PDF.js with a log and diagnostic.
   final PdfViewerEngine engine;
 
   /// Vertical or grid page arrangement.
@@ -53,6 +54,7 @@ class PdfViewerParams {
   final Color backgroundColor;
 
   /// Shadow drawn around each page.
+  /// PDFKit uses its native shadow color; a transparent color disables it.
   final Color pageShadowColor;
 
   /// Highlight color for search matches.
@@ -81,6 +83,7 @@ class PdfViewerParams {
 
   /// Native font substitutions are process-global and never automatically removed.
   /// Only used by pdfrx. PDF.js uses the bundled standard fonts.
+  /// PDFKit uses system and document-embedded fonts.
   final List<PdfFontRegistration> fonts;
 
   /// Shown until the first page can be displayed.

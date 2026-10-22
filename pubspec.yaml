@@ -1,6 +1,6 @@
 name: multi_engine_pdf_viewer
-description: An engine-independent PDF viewer for Android and iOS with PDF.js, EmbedPDF and native PDFium, search, outlines, links, and named actions.
-version: 0.1.8
+description: An engine-independent PDF viewer for Android and iOS with PDFKit, PDF.js, EmbedPDF and native PDFium, search, outlines, links, and named actions.
+version: 0.2.0
 repository: https://github.com/ndasim/multi_engine_pdf_viewer
 issue_tracker: https://github.com/ndasim/multi_engine_pdf_viewer/issues
 
@@ -34,6 +34,10 @@ dev_dependencies:
   webview_flutter_platform_interface: ^2.15.1
 
 flutter:
+  plugin:
+    platforms:
+      ios:
+        pluginClass: MultiEnginePdfViewerPlugin
   # Flutter asset directories are not recursive; every directory is listed.
   assets:
     - assets/embedpdf/

@@ -170,8 +170,8 @@ void main() {
     // runtime APIs it uses above that.
     //
     // This is also the answer to "transpile, hand-write, or ship a second host
-    // page for legacy": none of the three. The host page is already at the
-    // floor — its highest feature is `??=`, exactly Chrome 85 — so all three
+    // page for legacy": none of the three. The host page stays within the
+    // floor, and the probes verify the bundle's required features, so all three
     // options would buy nothing and cost a build step, readability in a
     // 700-line file, or a doubled surface for the bridge protocol and named
     // actions to be verified against. What was missing was enforcement.
@@ -223,10 +223,8 @@ void main() {
       });
     }
 
-    test('still uses the features that define the floor', () {
-      // A guard against the floor being raised silently by someone "cleaning
-      // up" these, which would make the test above vacuous.
-      expect(stripped, contains('??='), reason: 'logical assignment, Chrome 85 / Safari 14');
+    test('recognizes modern syntax used by the shipped host', () {
+      expect(stripped, contains('??'), reason: 'nullish coalescing, Chrome 80 / Safari 13.1');
       expect(stripped, contains('?.'), reason: 'optional chaining, Chrome 80 / Safari 13.1');
     });
 

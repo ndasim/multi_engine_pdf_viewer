@@ -1,8 +1,9 @@
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:multi_engine_pdf_viewer/multi_engine_pdf_viewer.dart';
 
-/// Opens a local PDF with PDF.js, EmbedPDF, or pdfrx.
+/// Opens a local PDF with PDFKit (iOS), PDF.js, EmbedPDF, or pdfrx.
 ///
 /// Android cleartext access for 127.0.0.1 is configured in
 /// `android/app/src/main/res/xml/network_security_config.xml`.
@@ -32,7 +33,7 @@ class _ViewerPageState extends State<ViewerPage> {
   final _searchController = TextEditingController();
 
   String? _path;
-  var _engine = PdfViewerEngine.pdfJs;
+  var _engine = const PdfViewerParams().engine;
 
   @override
   void dispose() {
@@ -82,16 +83,21 @@ class _ViewerPageState extends State<ViewerPage> {
               children: [
                 DropdownButton<PdfViewerEngine>(
                   value: _engine,
-                  items: const [
-                    DropdownMenuItem(
+                  items: [
+                    if (defaultTargetPlatform == TargetPlatform.iOS)
+                      const DropdownMenuItem(
+                        value: PdfViewerEngine.pdfKit,
+                        child: Text('PDFKit'), // TODO: use localization
+                      ),
+                    const DropdownMenuItem(
                       value: PdfViewerEngine.pdfJs,
                       child: Text('PDF.js'),
                     ),
-                    DropdownMenuItem(
+                    const DropdownMenuItem(
                       value: PdfViewerEngine.embedPdf,
                       child: Text('EmbedPDF'),
                     ),
-                    DropdownMenuItem(
+                    const DropdownMenuItem(
                       value: PdfViewerEngine.pdfrx,
                       child: Text('pdfrx'),
                     ),
