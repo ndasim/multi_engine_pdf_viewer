@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.3.0
+
+- **Breaking:** remove `PdfViewerEngine.embedPdf` and the EmbedPDF debug failure/worker hooks. Select PDF.js, pdfrx or iOS PDFKit instead.
+- Remove the WebAssembly runtime, fonts, viewer/worker assets, adapter, dedicated tests and loopback routes.
+- Preserve PDF.js defaults, bundle downgrade and loading indicators, and PDFKit's one-shot pdfrx fallback.
+- Update the example and documentation to cover the three remaining engines.
+- Keep explicit PDF.js navigation anchored in vertical mode when multiple short pages are visible.
+- Add physical-device profile integration tests for the remaining engines and fix the example's Android test build configuration.
+
 ## 0.2.0
 
 - Add an automatically registered iOS PDFKit engine, adapted from `feature/pdf_native_ios`, behind the existing controller/session contract.

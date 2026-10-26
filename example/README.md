@@ -7,7 +7,7 @@ flutter run
 ```
 
 Open a PDF from the app bar. PDF.js is the default on iOS and Android.
-The menu offers PDF.js, EmbedPDF and pdfrx on both platforms, plus PDFKit on iOS.
+The menu offers PDF.js and pdfrx on both platforms, plus PDFKit on iOS.
 
 Android allows cleartext HTTP for `127.0.0.1` only. The example targets iOS 14 or later.
 
@@ -20,6 +20,22 @@ flutter test integration_test/pdfkit_test.dart -d <ios-simulator-id>
 For a local Xcode whose simulator deployment floor is iOS 15+, prefix the command
 with `FLUTTER_XCODE_IPHONEOS_DEPLOYMENT_TARGET=15.0`. This does not raise the
 package's runtime minimum.
+
+For a physical iPhone, the generated fixture can also run in profile mode without
+debug/JIT startup:
+
+```sh
+flutter drive --profile --driver test_driver/integration_test.dart \
+  --target integration_test/pdfkit_test.dart -d <physical-ios-device-id>
+```
+
+PDF.js and pdfrx share an additional generated-fixture smoke test on Android and
+iOS, covering render, outline, navigation, search, grid and reopen:
+
+```sh
+flutter drive --profile --driver test_driver/integration_test.dart \
+  --target integration_test/remaining_engines_test.dart -d <physical-device-id>
+```
 
 For actual native touches, start the opt-in fixture:
 

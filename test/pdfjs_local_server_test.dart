@@ -59,6 +59,36 @@ void main() {
     expect(server.viewerUri.pathSegments.first.length, greaterThanOrEqualTo(22));
   });
 
+  test('removed engine routes never reach the asset loader or relax CSP', () async {
+    final loaded = <String>[];
+    final isolated = await PdfJsLocalServer.start(
+      file: pdfFile,
+      assetLoader: (path) async {
+        loaded.add(path);
+        return ByteData(0);
+      },
+    );
+    try {
+      for (final path in [
+        'embedpdf/pdfium.wasm',
+        'embedpdf_viewer/index.html',
+        'embedpdf_viewer/probe_legacy.mjs',
+        't/legacy/embedpdf_viewer/index.html',
+      ]) {
+        final response = await send('GET', isolated.documentUri.resolve(path));
+        expect(response.statusCode, HttpStatus.notFound, reason: path);
+        expect(
+          response.headers.value('Content-Security-Policy'),
+          PdfJsLocalServer.contentSecurityPolicy,
+        );
+        await body(response);
+      }
+      expect(loaded, isEmpty);
+    } finally {
+      await isolated.close();
+    }
+  });
+
   group('pinned bundle path', () {
     test('viewerUriFor inserts t/<id> between the token and the page', () {
       final pinned = server.viewerUriFor(PdfJsBundle.compat);

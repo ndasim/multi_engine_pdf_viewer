@@ -27,12 +27,6 @@ class PdfJsLocalServer {
       "style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'none'; "
       "frame-ancestors 'none'";
 
-  static const String embedPdfContentSecurityPolicy =
-      "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; "
-      "connect-src 'self'; img-src 'self' data: blob:; font-src 'self'; "
-      "style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'none'; "
-      "frame-ancestors 'none'";
-
   static const String _packageAssetPrefix = 'packages/multi_engine_pdf_viewer/assets/';
   static const String _documentPath = 'document.pdf';
 
@@ -78,7 +72,6 @@ class PdfJsLocalServer {
 
   /// The host page, letting `bootstrap.js` pick the bundle by capability probe.
   Uri get viewerUri => viewerUriFor(null);
-  Uri get embedPdfViewerUri => _baseUri.resolve('$_tierSegment/legacy/embedpdf_viewer/index.html');
 
   /// The host page pinned to [tier], or unpinned when [tier] is `null`.
   ///
@@ -193,10 +186,6 @@ class PdfJsLocalServer {
       if (assetPath == _documentPath) {
         return await _serveDocument(request);
       }
-      if (assetPath.startsWith('embedpdf/') || assetPath.startsWith('embedpdf_viewer/')) {
-        response.headers.set('Content-Security-Policy', embedPdfContentSecurityPolicy);
-        return await _serveAsset(request, assetPath, resolved.tier);
-      }
       if (assetPath.startsWith('viewer/') || assetPath.startsWith('pdfjs/')) {
         return await _serveAsset(request, assetPath, resolved.tier);
       }
@@ -261,7 +250,7 @@ class PdfJsLocalServer {
     final assetKey = _assetPath(assetPath, tier);
     final canonical = Uri(path: assetKey).normalizePath().path;
     if (canonical != assetKey ||
-        !const ['viewer/', 'pdfjs/', 'embedpdf/', 'embedpdf_viewer/'].any(canonical.startsWith)) {
+        !const ['viewer/', 'pdfjs/'].any(canonical.startsWith)) {
       return _sendStatus(request.response, HttpStatus.notFound);
     }
     final ByteData data;
@@ -309,10 +298,6 @@ class PdfJsLocalServer {
   /// [tier] is the bundle pinned in the request path; without one the selector's
   /// seed answer is used, which is the unpinned first request of a cold device.
   String _assetPath(String assetPath, [PdfJsBundle? tier]) {
-    if (assetPath == 'embedpdf_viewer/probe_legacy.mjs' ||
-        assetPath == 'embedpdf_viewer/probe_compat.mjs') {
-      return assetPath.replaceFirst('embedpdf_viewer/', 'viewer/');
-    }
     if (!assetPath.startsWith('pdfjs/')) return assetPath;
     final rest = assetPath.substring('pdfjs/'.length);
     final firstSegment = rest.split('/').first;

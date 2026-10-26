@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:multi_engine_pdf_viewer/multi_engine_pdf_viewer.dart';
 
-/// Opens a local PDF with PDFKit (iOS), PDF.js, EmbedPDF, or pdfrx.
+/// Opens a local PDF with PDFKit (iOS), PDF.js, or pdfrx.
 ///
 /// Android cleartext access for 127.0.0.1 is configured in
 /// `android/app/src/main/res/xml/network_security_config.xml`.
@@ -92,10 +92,6 @@ class _ViewerPageState extends State<ViewerPage> {
                     const DropdownMenuItem(
                       value: PdfViewerEngine.pdfJs,
                       child: Text('PDF.js'),
-                    ),
-                    const DropdownMenuItem(
-                      value: PdfViewerEngine.embedPdf,
-                      child: Text('EmbedPDF'),
                     ),
                     const DropdownMenuItem(
                       value: PdfViewerEngine.pdfrx,

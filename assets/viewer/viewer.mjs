@@ -228,14 +228,14 @@ async function open(config) {
 // ---- Layout -------------------------------------------------------------
 
 class AnchoredPDFViewer extends PDFViewer {
-    captureViewportAnchor() {
-        const pageView = this.getPageView(this.currentPageNumber - 1);
+    captureViewportAnchor(pageNumber = this.currentPageNumber) {
+        const pageView = this.getPageView(pageNumber - 1);
         if (!pageView) return;
         const rect = pageView.div.getBoundingClientRect();
         const bounds = this.container.getBoundingClientRect();
         if (!rect.width || !rect.height) return;
         this.viewportAnchor = {
-            pageNumber: this.currentPageNumber,
+            pageNumber,
             fx: (bounds.left + this.container.clientLeft - rect.left) / rect.width,
             fy: (bounds.top + this.container.clientTop - rect.top) / rect.height,
         };
@@ -253,7 +253,7 @@ class AnchoredPDFViewer extends PDFViewer {
     _getVisiblePages() {
         this.restoreViewportAnchor();
         const visible = super._getVisiblePages();
-        if (this.viewportAnchor && this.scrollMode === ScrollMode.WRAPPED) {
+        if (this.viewportAnchor) {
             const index = visible.views.findIndex((page) => page.id === this.viewportAnchor.pageNumber);
             if (index > 0) visible.views.unshift(...visible.views.splice(index, 1));
         }
@@ -275,7 +275,7 @@ class AnchoredPDFViewer extends PDFViewer {
         }
         this.viewportAnchor = null;
         super.scrollPageIntoView(options);
-        this.captureViewportAnchor();
+        this.captureViewportAnchor(options.pageNumber);
     }
 }
 
@@ -778,7 +778,9 @@ function handle(message) {
             break;
         case "goToPage":
             if (state.ready && Number.isInteger(message.pageNumber)) {
-                state.pdfViewer.currentPageNumber = clamp(message.pageNumber, 1, state.pdfViewer.pagesCount);
+                state.pdfViewer.scrollPageIntoView({
+                    pageNumber: clamp(message.pageNumber, 1, state.pdfViewer.pagesCount),
+                });
             }
             break;
         case "goToOutline":

@@ -8,6 +8,33 @@ const source = readFileSync(new URL("viewer/viewer.mjs", assets), "utf8");
 const playwrightModule = process.env.PDFJS_PLAYWRIGHT_MODULE;
 let browser;
 
+test("bridge navigation uses anchor-aware scrolling and clamps page numbers", () => {
+    const pages = [];
+    const context = vm.createContext({
+        PROTOCOL_VERSION: 1,
+        state: {
+            ready: true,
+            pdfViewer: {
+                pagesCount: 3,
+                scrollPageIntoView: ({ pageNumber }) => pages.push(pageNumber),
+                set currentPageNumber(_) {
+                    assert.fail("navigation must clear the previous viewport anchor before scrolling");
+                },
+            },
+        },
+        clamp: (value, min, max) => Math.max(min, Math.min(max, value)),
+    });
+    vm.runInContext(shippedFunction(source, "handle"), context);
+    for (const pageNumber of [3, 1, 100, -1, 1.5]) {
+        context.pageNumber = pageNumber;
+        vm.runInContext('handle({ v: 1, type: "goToPage", pageNumber })', context);
+    }
+    assert.deepEqual(pages, [3, 1, 3, 1]);
+    context.state.ready = false;
+    vm.runInContext('handle({ v: 1, type: "goToPage", pageNumber: 2 })', context);
+    assert.deepEqual(pages, [3, 1, 3, 1]);
+});
+
 function method(text, name, className = "PDFViewer") {
     const start = text.indexOf(`  ${name}(`, text.indexOf(`class ${className}`));
     const end = text.indexOf("\n  }", start) + 4;
@@ -144,6 +171,32 @@ function layoutFixture(tier) {
 }
 
 for (const tier of ["current", "compat", "legacy"]) {
+    test(`${tier}: navigation anchors the target before PDF.js publishes its new page`, () => {
+        const fixture = layoutFixture(tier);
+        fixture.run(`
+            PDFViewer.prototype.scrollPageIntoView = function({ pageNumber }) {
+                container.scrollTop = this.getPageView(pageNumber - 1).div.offsetTop;
+            };
+            state.pdfViewer.currentPageNumber = 3;
+            state.pdfViewer.scrollPageIntoView({ pageNumber: 1 });
+        `);
+        assert.equal(fixture.state.pdfViewer.viewportAnchor.pageNumber, 1);
+        fixture.run("state.pdfViewer.update()");
+        assert.equal(fixture.state.pdfViewer.currentPageNumber, 1);
+    });
+
+    test(`${tier}: a larger visible neighbor cannot replace a vertical navigation target`, () => {
+        const fixture = layoutFixture(tier);
+        fixture.run(`
+            state.pdfViewer.currentPageNumber = 1;
+            PDFViewer.prototype._getVisiblePages = () => ({ views: [{ id: 2 }, { id: 1 }] });
+        `);
+        assert.deepEqual(
+            Array.from(fixture.state.pdfViewer._getVisiblePages().views, (page) => page.id),
+            [1, 2],
+        );
+    });
+
     for (const phase of ["drag", "touchend", "touchcancel"]) {
         for (const direction of ["forward", "backward"]) {
             test(`${tier}: ${direction} touch scrolling beyond four pages stays native during ${phase}`, () => {

@@ -6,9 +6,6 @@ enum PdfViewerEngine {
   /// Native PDFium through pdfrx.
   pdfrx,
 
-  /// Offline PDFium compiled to WASM. Opt in; a fatal failure falls back to pdfrx once.
-  embedPdf,
-
   /// Apple's PDFKit. iOS only; host applications choose when to enable it.
   pdfKit,
 }
@@ -153,7 +150,7 @@ class PdfViewerDiagnostic {
   /// PDF.js bundle tier, when this event comes from PDF.js.
   final String? bundle;
 
-  /// Why this engine was selected, such as `selected` or `embedpdf-fallback`.
+  /// Why this engine was selected, such as `selected` or `pdfkit-fallback`.
   final String source;
 
   /// Zero-based attempt count for this resolution.

@@ -5,7 +5,6 @@ import 'package:flutter/widgets.dart';
 
 import '../domain/entity/pdf_viewer_state.dart';
 import '../domain/repo/pdf_engine_session.dart';
-import 'engines/embedpdf_engine_view.dart';
 import 'engines/pdfrx_engine_view.dart';
 import 'engines/pdfjs_engine_view.dart';
 import 'engines/pdfkit_engine_view.dart';
@@ -68,7 +67,7 @@ class _PdfViewerState extends State<PdfViewer> {
     _selectedEngine = _requestedEngine;
     final supported = switch (_selectedEngine) {
       PdfViewerEngine.pdfKit => defaultTargetPlatform == TargetPlatform.iOS,
-      PdfViewerEngine.pdfJs || PdfViewerEngine.pdfrx || PdfViewerEngine.embedPdf => true,
+      PdfViewerEngine.pdfJs || PdfViewerEngine.pdfrx => true,
     };
     if (supported) return;
     _engineOverride = PdfViewerEngine.pdfJs;
@@ -129,21 +128,11 @@ class _PdfViewerState extends State<PdfViewer> {
 
   void _onError(int generation, Object error, StackTrace? stackTrace) {
     if (!mounted || generation != _generation) return;
-    final resourceRejected =
-        _engine == PdfViewerEngine.embedPdf &&
-        error is PdfViewerException &&
-        error.name.startsWith('embedpdf-fatal-') &&
-        error.name.endsWith('-limit') &&
-        error.name != 'embedpdf-fatal-document-limit';
     final pdfKitFatal =
         _engine == PdfViewerEngine.pdfKit &&
         error is PdfViewerException &&
         error.name.startsWith('pdfkit-fatal-');
-    if (pdfKitFatal ||
-        (_engine == PdfViewerEngine.embedPdf &&
-            error is PdfViewerException &&
-            error.name.startsWith('embedpdf-fatal-') &&
-            !resourceRejected)) {
+    if (pdfKitFatal) {
       if (_fallbackPending) return;
       _fallbackPending = true;
       final page = _controller.pageNumber ?? _resumePage ?? widget.initialPageNumber;
@@ -162,7 +151,7 @@ class _PdfViewerState extends State<PdfViewer> {
           widget.params.onDiagnostic?.call(
             PdfViewerDiagnostic(
               engine: PdfViewerEngine.pdfrx,
-              source: pdfKitFatal ? 'pdfkit-fallback' : 'embedpdf-fallback',
+              source: 'pdfkit-fallback',
               attempt: 1,
               failure: error.name,
             ),
@@ -173,8 +162,8 @@ class _PdfViewerState extends State<PdfViewer> {
     }
     final recoverableCommand =
         error is PdfViewerException &&
-        (error.name.startsWith('embedpdf-command-') || error.name.startsWith('pdfkit-command-'));
-    if (resourceRejected || (!_controller.isReady && !recoverableCommand)) {
+        error.name.startsWith('pdfkit-command-');
+    if (!_controller.isReady && !recoverableCommand) {
       scheduleMicrotask(() {
         if (mounted && generation == _generation) setState(() => _error = error);
       });
@@ -274,20 +263,6 @@ class _PdfViewerState extends State<PdfViewer> {
 
     if (_engine == PdfViewerEngine.pdfKit) {
       return PdfKitEngineView(
-        key: key,
-        filePath: widget.filePath,
-        initialPageNumber: initialPage,
-        params: params,
-        onAttach: attach,
-        onDetach: _detach,
-        onReady: ready,
-        onError: onError,
-        layout: params.layout,
-        onPageTap: onPageTap,
-      );
-    }
-    if (_engine == PdfViewerEngine.embedPdf) {
-      return EmbedPdfEngineView(
         key: key,
         filePath: widget.filePath,
         initialPageNumber: initialPage,
